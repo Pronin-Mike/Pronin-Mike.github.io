@@ -2,14 +2,8 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 /**
- * base нужен для GitHub Pages:
- *   project site  https://<user>.github.io/<repo>/  → VITE_BASE_PATH=/<repo>/
- *   user site     https://<user>.github.io/         → VITE_BASE_PATH=/ (по умолчанию)
- *
- * В workflow деплоя переменная подставляется автоматически из имени репозитория.
+ * Для user site https://<user>.github.io/ base остаётся '/'.
  */
-const base = process.env.VITE_BASE_PATH ?? '/';
-
 export default defineConfig({
   base: '/',
   plugins: [react()],
