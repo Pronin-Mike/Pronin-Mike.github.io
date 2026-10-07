@@ -28,6 +28,7 @@ import type {
 } from './types';
 import { isUnit } from './types';
 import { round3 } from './availability';
+import type { FridgeImportCounts, FridgeImportPlan } from './fridgeImport';
 
 /** Единая точка превращения ошибки Supabase в Error с понятным текстом. */
 function raise(context: string, error: { message?: string } | null): never {
@@ -190,6 +191,34 @@ export async function deleteFridgeItem(id: string): Promise<void> {
 export async function clearFridge(): Promise<void> {
   const { error } = await supabase.from('fridge_items').delete().not('id', 'is', null);
   if (error) raise('Не удалось очистить холодильник', error);
+}
+
+/**
+ * Применяет план массового заполнения холодильника (см. lib/fridgeImport.ts).
+ * План считается на клиенте: здесь только запись — удаления, изменения, вставки.
+ */
+export async function applyFridgeImport(plan: FridgeImportPlan): Promise<FridgeImportCounts> {
+  if (plan.deletes.length) {
+    const { error } = await supabase.from('fridge_items').delete().in('id', plan.deletes);
+    if (error) raise('Не удалось очистить холодильник', error);
+  }
+
+  for (const update of plan.updates) {
+    await updateFridgeItem(update.id, update.patch);
+  }
+
+  if (plan.inserts.length) {
+    const { error } = await supabase.from('fridge_items').insert(
+      plan.inserts.map((item) => ({
+        name: item.name.trim(),
+        amount: round3(item.amount),
+        unit: item.unit
+      }))
+    );
+    if (error) raise('Не удалось добавить продукты', error);
+  }
+
+  return plan.counts;
 }
 
 /* -------------------------------------------------------------------------- *

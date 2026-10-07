@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, FileUp, Upload } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
+import FridgeCsvImport from '../components/FridgeCsvImport';
 import Modal from '../components/Modal';
 import { useToast } from '../components/Toast';
 import { Button, Card, Field, Textarea, cn } from '../components/ui';
@@ -161,7 +162,10 @@ export default function Import() {
         </p>
       </header>
 
-      {/* A. Блюда из CSV */}
+      {/* A. Продукты из CSV */}
+      <FridgeCsvImport />
+
+      {/* B. Блюда из CSV */}
       <Card className="flex flex-col gap-3">
         <h2 className="flex items-center gap-2 font-display text-lg text-ink">
           <FileSpreadsheet className="size-5 text-terra-500" aria-hidden="true" />
@@ -237,7 +241,7 @@ export default function Import() {
         </div>
       </Card>
 
-      {/* B. JSON */}
+      {/* JSON */}
       <Card className="flex flex-col gap-3">
         <h2 className="flex items-center gap-2 font-display text-lg text-ink">
           <Upload className="size-5 text-terra-500" aria-hidden="true" />

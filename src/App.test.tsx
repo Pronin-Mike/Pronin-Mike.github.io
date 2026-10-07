@@ -31,6 +31,7 @@ vi.mock('./lib/api', () => ({
   updateFridgeItem: vi.fn(),
   deleteFridgeItem: vi.fn(),
   clearFridge: vi.fn(),
+  applyFridgeImport: vi.fn(),
   exportBackup: vi.fn(),
   importBackup: vi.fn(),
   importDishes: vi.fn()
@@ -39,6 +40,7 @@ vi.mock('./lib/api', () => ({
 import App from './App';
 import * as api from './lib/api';
 import { supabase } from './lib/supabase';
+import type { FridgeImportPlan } from './lib/fridgeImport';
 import type { Dish, FridgeItem, Section } from './lib/types';
 
 const SECTIONS: Section[] = [
@@ -85,7 +87,18 @@ function cardByTitle(title: string): HTMLElement {
   return card;
 }
 
+/** План последнего вызова api.applyFridgeImport. */
+function planFromLastCall(): FridgeImportPlan {
+  const calls = vi.mocked(api.applyFridgeImport).mock.calls;
+  const last = calls[calls.length - 1];
+  if (!last) throw new Error('api.applyFridgeImport не вызывался');
+  return last[0];
+}
+
 beforeEach(() => {
+  // HashRouter читает window.location, а он живёт между тестами одного файла
+  window.history.replaceState(null, '', '#/');
+
   fridge = [
     { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null },
     { id: 'p2', name: 'сыр', amount: 300, unit: 'г', updatedAt: null }
@@ -100,6 +113,7 @@ beforeEach(() => {
   vi.mocked(api.fetchDishes).mockImplementation(async () => [OMELETTE, BORSCH]);
   vi.mocked(api.fetchFridge).mockImplementation(async () => fridge);
   vi.mocked(api.cookDish).mockResolvedValue({ success: true, missing: [] });
+  vi.mocked(api.applyFridgeImport).mockImplementation(async (plan) => plan.counts);
 });
 
 afterEach(() => {
@@ -180,9 +194,7 @@ describe('Recipes', () => {
 
     vi.mocked(api.cookDish).mockResolvedValue({
       success: false,
-      missing: [
-        { name: 'сыр', need: 50, have: 0, unit: 'г', reason: 'absent' }
-      ]
+      missing: [{ name: 'сыр', need: 50, have: 0, unit: 'г', reason: 'absent' }]
     });
 
     fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('button', { name: 'Приготовить' }));
@@ -204,11 +216,89 @@ describe('Навигация и защита маршрутов', () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    const fridgeLink = screen.getAllByRole('link', { name: /Холодильник/ })[0];
-    fireEvent.click(fridgeLink);
+    fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
 
     expect(await screen.findByText('сыр')).toBeTruthy();
     expect(screen.getByText('яйца')).toBeTruthy();
     expect(screen.getByText('300 г')).toBeTruthy();
+  });
+});
+
+describe('Импорт холодильника из CSV', () => {
+  async function openImportPage(): Promise<HTMLElement> {
+    render(<App />);
+    await screen.findByText('Омлет с сыром');
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Импорт' })[0]);
+    const heading = await screen.findByRole('heading', { name: /Холодильник из CSV/ });
+    const card = heading.closest('section');
+    if (!card) throw new Error('Не найдена карточка импорта холодильника');
+    return card;
+  }
+
+  function fridgeTextarea(): HTMLElement {
+    return screen.getByLabelText('…или вставьте CSV прямо сюда', { selector: '#fridge-csv-text' });
+  }
+
+  it('разбирает CSV, показывает предпросмотр и пишет в базу', async () => {
+    const card = await openImportPage();
+
+    fireEvent.change(fridgeTextarea(), {
+      target: { value: 'name,amount,unit\nмука,2000,г\nяйца,12,шт' }
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+
+    expect(await screen.findByText('Готово к импорту: 2 продукта')).toBeTruthy();
+    expect(screen.getByText('Строк данных: 2')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Импортировать 2 продукта/ }));
+
+    await waitFor(() => expect(api.applyFridgeImport).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Холодильник обновлён/)).toBeTruthy();
+
+    const plan = planFromLastCall();
+    expect(plan.mode).toBe('merge');
+    expect(plan.inserts).toEqual([{ name: 'мука', amount: 2000, unit: 'г' }]);
+    expect(plan.updates).toEqual([{ id: 'p1', patch: { name: 'яйца', amount: 12, unit: 'шт' } }]);
+  });
+
+  it('в режиме «прибавлять» складывает количество', async () => {
+    const card = await openImportPage();
+
+    fireEvent.change(fridgeTextarea(), {
+      target: { value: 'name,amount,unit\nмука,2000,г\nяйца,12,шт' }
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+    expect(await screen.findByText('Готово к импорту: 2 продукта')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Прибавлять к текущему количеству/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Импортировать 2 продукта/ }));
+
+    await waitFor(() => expect(api.applyFridgeImport).toHaveBeenCalledTimes(1));
+
+    const plan = planFromLastCall();
+    expect(plan.mode).toBe('sum');
+    expect(plan.counts).toEqual({ added: 1, updated: 0, summed: 1, skipped: 0 });
+    expect(plan.updates).toEqual([{ id: 'p1', patch: { name: 'яйца', amount: 22, unit: 'шт' } }]);
+  });
+
+  it('показывает ошибки строк и импортирует корректные', async () => {
+    const card = await openImportPage();
+
+    fireEvent.change(fridgeTextarea(), {
+      target: { value: 'name,amount,unit\nмука,1000,кг\nтворог,400,г' }
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+
+    expect(await screen.findByText('Ошибок: 1')).toBeTruthy();
+    expect(screen.getByText('Готово к импорту: 1 продукт')).toBeTruthy();
+    expect(screen.getByText(/Строка 2: Единица измерения/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Импортировать 1 продукт/ }));
+    await waitFor(() => expect(api.applyFridgeImport).toHaveBeenCalledTimes(1));
+
+    const plan = planFromLastCall();
+    expect(plan.inserts).toEqual([{ name: 'творог', amount: 400, unit: 'г' }]);
+    expect(plan.counts).toEqual({ added: 1, updated: 0, summed: 0, skipped: 0 });
   });
 });

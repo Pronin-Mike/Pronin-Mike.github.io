@@ -1,21 +1,19 @@
 /* ============================================================================
- * csv.ts — импорт блюд из CSV (свой парсер, без внешних библиотек).
+ * csv.ts — импорт из CSV (свой парсер, без внешних библиотек).
  *
- * Формат:
- *   title,section,ingredients,time,steps,notes
- *   section     — breakfast | lunch | dinner (можно по-русски: завтрак, обед, ужин)
- *   ingredients — «название|количество|единица» через «;»
- *   steps       — шаги через «;»
- *   time        — минуты, можно пусто
+ * Два формата:
+ *   блюда       — title,section,ingredients,time,steps,notes
+ *   холодильник — name,amount,unit
  *
  * Разделитель колонок определяется автоматически: «,», «;» или табуляция.
  * ========================================================================== */
 
-import type { DishIngredient, DishInput, Unit } from './types';
+import type { DishIngredient, DishInput, FridgeInput, Unit } from './types';
 import { isUnit } from './types';
 import { validateDishInput } from './validation';
 
 export const DISH_CSV_COLUMNS = ['title', 'section', 'ingredients', 'time', 'steps', 'notes'] as const;
+export const FRIDGE_CSV_COLUMNS = ['name', 'amount', 'unit'] as const;
 
 export interface CsvError {
   row: number;
@@ -27,8 +25,21 @@ export interface ParsedDishRow {
   dish: DishInput;
 }
 
+export interface ParsedFridgeRow {
+  row: number;
+  item: FridgeInput;
+}
+
 export interface CsvParseResult {
   items: ParsedDishRow[];
+  errors: CsvError[];
+  dataRows: number;
+  delimiter: string;
+  hasHeader: boolean;
+}
+
+export interface FridgeCsvParseResult {
+  items: ParsedFridgeRow[];
   errors: CsvError[];
   dataRows: number;
   delimiter: string;
@@ -73,6 +84,23 @@ const HEADER_ALIASES: Record<string, string> = {
   'заметки': 'notes',
   'примечания': 'notes',
   'комментарий': 'notes'
+};
+
+/** Заголовки файла холодильника. */
+const FRIDGE_HEADER_ALIASES: Record<string, string> = {
+  name: 'name',
+  'название': 'name',
+  'продукт': 'name',
+  'наименование': 'name',
+  amount: 'amount',
+  'количество': 'amount',
+  'кол-во': 'amount',
+  'кол': 'amount',
+  unit: 'unit',
+  'единица': 'unit',
+  'ед': 'unit',
+  'ед.': 'unit',
+  'единицаизмерения': 'unit'
 };
 
 function cleanText(value: unknown): string {
@@ -264,7 +292,9 @@ export function parseDishesCSV(text: string): CsvParseResult {
       items,
       errors: [{
         row: 1,
-        message: `Не найдена колонка «title». Ожидаются заголовки: ${DISH_CSV_COLUMNS.join(', ')}`
+        message: looksLikeFridgeCsv(rows[0] ?? [])
+          ? 'Похоже, это CSV холодильника (name,amount,unit) — используйте блок «Холодильник из CSV».'
+          : `Не найдена колонка «title». Ожидаются заголовки: ${DISH_CSV_COLUMNS.join(', ')}`
       }],
       dataRows: rows.length,
       delimiter,
@@ -338,6 +368,119 @@ export function parseDishesCSV(text: string): CsvParseResult {
   });
 
   return { items, errors, dataRows: dataRows.length, delimiter, hasHeader };
+}
+
+/* -------------------------------------------------------------------------- *
+ * Холодильник: name,amount,unit
+ * -------------------------------------------------------------------------- */
+
+function mapFridgeHeader(cell: string): string {
+  const key = cleanText(cell).toLowerCase().replace(/[«»"'.]/g, '');
+  return FRIDGE_HEADER_ALIASES[key] ?? '';
+}
+
+/** Похоже ли, что первая строка — заголовки файла холодильника. */
+function looksLikeFridgeCsv(cells: string[]): boolean {
+  const mapped = cells.map((cell) => mapFridgeHeader(cell));
+  return mapped.includes('name') || (mapped.includes('amount') && mapped.includes('unit'));
+}
+
+/** Валидные строки файла холодильника: name, amount > 0, unit из г/мл/шт. */
+function parseFridgeRecord(record: Record<string, string>): { item: FridgeInput | null; errors: string[] } {
+  const name = cleanText(record.name);
+  const amount = parseAmount(record.amount);
+  const unit = parseUnit(record.unit);
+  const errors: string[] = [];
+
+  if (!name) errors.push('Укажите название продукта.');
+  else if (name.length > 80) errors.push('Название продукта длиннее 80 символов.');
+
+  if (!Number.isFinite(amount)) errors.push('Укажите количество числом.');
+  else if (amount <= 0) errors.push('Количество должно быть больше нуля.');
+
+  if (!unit) errors.push('Единица измерения — только г, мл или шт.');
+
+  if (errors.length || !unit) return { item: null, errors };
+
+  return { item: { name, amount, unit }, errors: [] };
+}
+
+/**
+ * Разбирает CSV холодильника (name,amount,unit).
+ * Строка заголовков необязательна: файл из одних данных читается так же.
+ * Единицы понимаются в записи г/мл/шт, а также g/ml/pcs.
+ */
+export function parseFridgeCSV(text: string): FridgeCsvParseResult {
+  const delimiter = detectDelimiter(text);
+  const rows = parseRows(text, delimiter);
+  const errors: CsvError[] = [];
+  const items: ParsedFridgeRow[] = [];
+
+  if (!rows.length) {
+    return { items, errors: [{ row: 0, message: 'Файл пустой.' }], dataRows: 0, delimiter, hasHeader: false };
+  }
+
+  const header = (rows[0] ?? []).map(mapFridgeHeader);
+  const hasHeader = header.includes('name');
+
+  if (hasHeader) {
+    const missing = FRIDGE_CSV_COLUMNS.filter((column) => !header.includes(column));
+    if (missing.length) {
+      return {
+        items,
+        errors: [{
+          row: 1,
+          message: `Не найдены колонки: ${missing.join(', ')}. Ожидаются name, amount, unit.`
+        }],
+        dataRows: 0,
+        delimiter,
+        hasHeader: true
+      };
+    }
+  }
+
+  const map = hasHeader ? header : [...FRIDGE_CSV_COLUMNS];
+  const start = hasHeader ? 1 : 0;
+  const dataRows = rows.slice(start);
+
+  dataRows.forEach((cells, index) => {
+    const rowNumber = start === 1 ? index + 2 : index + 1;
+    const record: Record<string, string> = {};
+
+    map.forEach((column, position) => {
+      if (!column) return;
+      record[column] = cells[position] ?? '';
+    });
+
+    const parsed = parseFridgeRecord(record);
+    if (!parsed.item) {
+      errors.push({ row: rowNumber, message: parsed.errors.join(' ') });
+      return;
+    }
+
+    items.push({ row: rowNumber, item: parsed.item });
+  });
+
+  return { items, errors, dataRows: dataRows.length, delimiter, hasHeader };
+}
+
+/** @returns {string} CSV холодильника (для экспорта и шаблона). */
+export function toFridgeCSV(items: FridgeInput[]): string {
+  const lines = [FRIDGE_CSV_COLUMNS.join(',')];
+  items.forEach((item) => {
+    const name = /[",;\n]/.test(item.name) ? `"${item.name.replace(/"/g, '""')}"` : item.name;
+    lines.push(`${name},${item.amount},${item.unit}`);
+  });
+  // BOM, чтобы Excel открыл файл в UTF-8
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
+}
+
+export function fridgeCsvTemplate(): string {
+  return toFridgeCSV([
+    { name: 'мука', amount: 1000, unit: 'г' },
+    { name: 'молоко', amount: 1000, unit: 'мл' },
+    { name: 'яйца', amount: 10, unit: 'шт' }
+  ]);
 }
 
 /** Шаблон CSV с примером — отдаётся кнопкой «Скачать шаблон». */

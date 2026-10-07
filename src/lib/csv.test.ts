@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { detectDelimiter, dishesCsvTemplate, parseAmount, parseDishesCSV, parseIngredients, parseUnit } from './csv';
+import {
+  detectDelimiter,
+  dishesCsvTemplate,
+  fridgeCsvTemplate,
+  parseAmount,
+  parseDishesCSV,
+  parseFridgeCSV,
+  parseIngredients,
+  parseUnit,
+  toFridgeCSV
+} from './csv';
 
 /* ============================================================================
  * Проверки CSV-импорта блюд.
@@ -127,5 +137,71 @@ describe('parseDishesCSV', () => {
     const result = parseDishesCSV(dishesCsvTemplate());
     expect(result.errors).toHaveLength(0);
     expect(result.items).toHaveLength(2);
+  });
+
+  it('подсказывает, если в блок блюд вставили CSV холодильника', () => {
+    const result = parseDishesCSV('name,amount,unit\nмука,1000,г');
+    expect(result.items).toHaveLength(0);
+    expect(result.errors[0].message).toMatch(/CSV холодильника/);
+  });
+});
+
+describe('parseFridgeCSV', () => {
+  it('разбирает файл с заголовками', () => {
+    const result = parseFridgeCSV('name,amount,unit\nмука,1000,г\nяйца,10,шт');
+    expect(result.errors).toHaveLength(0);
+    expect(result.hasHeader).toBe(true);
+    expect(result.items.map((row) => row.item)).toEqual([
+      { name: 'мука', amount: 1000, unit: 'г' },
+      { name: 'яйца', amount: 10, unit: 'шт' }
+    ]);
+  });
+
+  it('читает файл без строки заголовков', () => {
+    const result = parseFridgeCSV('мука,1000,г\nмолоко,1.5,мл');
+    expect(result.hasHeader).toBe(false);
+    expect(result.errors).toHaveLength(0);
+    expect(result.items).toHaveLength(2);
+    expect(result.items[1].item.amount).toBe(1.5);
+  });
+
+  it('понимает русские заголовки, «;» и латиницу в единицах', () => {
+    const result = parseFridgeCSV('название;количество;единица\nсыр;300;g\nсок;1;л');
+    expect(result.delimiter).toBe(';');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].item).toEqual({ name: 'сыр', amount: 300, unit: 'г' });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].row).toBe(3);
+    expect(result.errors[0].message).toMatch(/Единица измерения/);
+  });
+
+  it('сообщает номера строк для пустого количества, названия и нуля', () => {
+    const result = parseFridgeCSV(['name,amount,unit', 'мука,,г', ',500,г', 'сахар,0,г', 'соль,200,г'].join('\n'));
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].item.name).toBe('соль');
+    expect(result.errors.map((error) => error.row)).toEqual([2, 3, 4]);
+  });
+
+  it('требует все три колонки, если есть заголовки', () => {
+    const result = parseFridgeCSV('name,amount\nмука,1000');
+    expect(result.items).toHaveLength(0);
+    expect(result.errors[0].message).toMatch(/Не найдены колонки: unit/);
+  });
+
+  it('пример файла холодильника разбирается без ошибок', () => {
+    const result = parseFridgeCSV(fridgeCsvTemplate());
+    expect(result.errors).toHaveLength(0);
+    expect(result.items).toHaveLength(3);
+  });
+
+  it('экспорт и повторный разбор не теряют данные', () => {
+    const csv = toFridgeCSV([
+      { name: 'мука, пшеничная', amount: 1000, unit: 'г' },
+      { name: 'яйца', amount: 10, unit: 'шт' }
+    ]);
+    const result = parseFridgeCSV(csv);
+    expect(result.errors).toHaveLength(0);
+    expect(result.items[0].item.name).toBe('мука, пшеничная');
+    expect(result.items[1].item.amount).toBe(10);
   });
 });
