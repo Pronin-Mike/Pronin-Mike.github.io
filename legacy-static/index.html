@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#FBF6EF">
+  <title>Домашняя кулинарная книга</title>
+  <meta name="description" content="Личная кулинарная книга: рецепты по разделам, холодильник и подсказка, что можно приготовить прямо сейчас.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%B3%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержимому</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">🍳</span>
+        <span class="brand__text">
+          <strong class="brand__title">Домашняя книга</strong>
+          <span class="brand__sub" id="brand-summary">Загружаю…</span>
+        </span>
+      </div>
+      <div class="topbar__stats" id="topbar-stats" aria-live="polite"></div>
+    </div>
+  </header>
+
+  <main class="main" id="main">
+
+    <!-- ============================ РЕЦЕПТЫ ============================ -->
+    <section class="panel" id="panel-recipes" data-panel="recipes" aria-labelledby="tab-recipes">
+      <div class="panel__head">
+        <h1 class="panel__title">Рецепты</h1>
+        <p class="panel__lead">Всё, что можно приготовить из того, что уже есть дома.</p>
+      </div>
+
+      <div class="toolbar">
+        <div class="search">
+          <span class="search__icon" aria-hidden="true">🔍</span>
+          <input
+            type="search"
+            id="recipe-search"
+            class="search__input"
+            placeholder="Поиск по блюду или ингредиенту"
+            autocomplete="off"
+            aria-label="Поиск по блюду или ингредиенту">
+          <button type="button" class="search__clear" id="recipe-search-clear" aria-label="Очистить поиск" hidden>✕</button>
+        </div>
+
+        <label class="switch" for="only-available">
+          <input type="checkbox" id="only-available" class="switch__input">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          <span class="switch__label">Что приготовить</span>
+        </label>
+      </div>
+
+      <div class="chips" id="section-filter" role="tablist" aria-label="Разделы">
+        <button type="button" class="chip is-active" role="tab" aria-selected="true" data-section="all">Все</button>
+        <button type="button" class="chip" role="tab" aria-selected="false" data-section="breakfast">🍳 Завтрак</button>
+        <button type="button" class="chip" role="tab" aria-selected="false" data-section="snack">🍎 Полдник</button>
+        <button type="button" class="chip" role="tab" aria-selected="false" data-section="lunch">🍲 Обед</button>
+        <button type="button" class="chip" role="tab" aria-selected="false" data-section="dinner">🌙 Ужин</button>
+      </div>
+
+      <div class="hint" id="recipes-hint" hidden></div>
+
+      <div class="grid" id="recipe-grid"></div>
+
+      <div class="empty" id="recipes-empty" hidden>
+        <div class="empty__emoji" aria-hidden="true">🧺</div>
+        <h2 class="empty__title" id="recipes-empty-title">Пока пусто</h2>
+        <p class="empty__text" id="recipes-empty-text"></p>
+        <div class="empty__actions" id="recipes-empty-actions"></div>
+      </div>
+    </section>
+
+    <!-- ========================== ХОЛОДИЛЬНИК ========================== -->
+    <section class="panel" id="panel-fridge" data-panel="fridge" aria-labelledby="tab-fridge" hidden>
+      <div class="panel__head">
+        <h1 class="panel__title">Холодильник</h1>
+        <p class="panel__lead">Продукты и их количество. Без количества и единицы продукт не сохранится.</p>
+      </div>
+
+      <form class="card form-card" id="product-form" novalidate>
+        <h2 class="card__title" id="product-form-title">Добавить продукт</h2>
+        <div class="form-grid form-grid--product">
+          <label class="field field--wide">
+            <span class="field__label">Название</span>
+            <input type="text" id="product-name" class="input" placeholder="мука" autocomplete="off" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Количество</span>
+            <input type="text" id="product-amount" class="input" inputmode="decimal" placeholder="1000" autocomplete="off" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Единица</span>
+            <select id="product-unit" class="input">
+              <option value="г">г</option>
+              <option value="мл">мл</option>
+              <option value="шт">шт</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn--primary" id="product-submit">Добавить</button>
+          <button type="button" class="btn btn--ghost" id="product-cancel" hidden>Отмена</button>
+        </div>
+        <p class="form-error" id="product-error" hidden></p>
+      </form>
+
+      <div class="toolbar toolbar--slim">
+        <div class="search">
+          <span class="search__icon" aria-hidden="true">🔍</span>
+          <input type="search" id="fridge-search" class="search__input" placeholder="Найти продукт" autocomplete="off" aria-label="Найти продукт">
+          <button type="button" class="search__clear" id="fridge-search-clear" aria-label="Очистить поиск" hidden>✕</button>
+        </div>
+      </div>
+
+      <ul class="fridge-list" id="fridge-list"></ul>
+
+      <div class="empty" id="fridge-empty" hidden>
+        <div class="empty__emoji" aria-hidden="true">🧊</div>
+        <h2 class="empty__title">Холодильник пуст</h2>
+        <p class="empty__text">Добавь продукты в холодильник — и книга сама подскажет, что можно приготовить.</p>
+      </div>
+    </section>
+
+    <!-- ========================= ДОБАВИТЬ БЛЮДО ======================== -->
+    <section class="panel" id="panel-add" data-panel="add" aria-labelledby="tab-add" hidden>
+      <div class="panel__head">
+        <h1 class="panel__title" id="dish-form-title">Добавить блюдо</h1>
+        <p class="panel__lead">Раздел, ингредиенты, шаги. Единицы измерения — только г, мл или шт.</p>
+      </div>
+
+      <form class="card form-card" id="dish-form" novalidate>
+        <div class="form-grid">
+          <label class="field field--wide">
+            <span class="field__label">Название блюда</span>
+            <input type="text" id="dish-title" class="input" placeholder="Омлет с сыром" autocomplete="off" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Раздел</span>
+            <select id="dish-section" class="input">
+              <option value="breakfast">🍳 Завтрак</option>
+              <option value="snack">🍎 Полдник</option>
+              <option value="lunch">🍲 Обед</option>
+              <option value="dinner">🌙 Ужин</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">Время, минут</span>
+            <input type="text" id="dish-time" class="input" inputmode="numeric" placeholder="15" autocomplete="off">
+          </label>
+        </div>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset__legend">Ингредиенты</legend>
+          <div class="rows" id="ingredient-rows"></div>
+          <button type="button" class="btn btn--dashed" id="add-ingredient">＋ Ингредиент</button>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset__legend">Шаги приготовления</legend>
+          <div class="rows" id="step-rows"></div>
+          <button type="button" class="btn btn--dashed" id="add-step">＋ Шаг</button>
+        </fieldset>
+
+        <label class="field">
+          <span class="field__label">Заметки</span>
+          <textarea id="dish-notes" class="input input--area" rows="3" placeholder="Солить в самом конце, подавать горячим…"></textarea>
+        </label>
+
+        <p class="form-error" id="dish-error" hidden></p>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn--primary" id="dish-submit">Сохранить блюдо</button>
+          <button type="button" class="btn btn--ghost" id="dish-cancel" hidden>Отменить редактирование</button>
+          <button type="button" class="btn btn--ghost" id="dish-reset">Очистить форму</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============================= ИМПОРТ ============================ -->
+    <section class="panel" id="panel-import" data-panel="import" aria-labelledby="tab-import" hidden>
+      <div class="panel__head">
+        <h1 class="panel__title">Импорт</h1>
+        <p class="panel__lead">Заполнить холодильник и добавить блюда из CSV, восстановить базу из JSON.</p>
+      </div>
+
+      <div class="card">
+        <h2 class="card__title">Холодильник из CSV</h2>
+        <p class="card__text">
+          Колонки: <code>name,amount,unit</code> — по одной строке на продукт, например
+          <code>мука,1000,г</code>. Единица измерения — только <code>г</code>, <code>мл</code> или <code>шт</code>.
+          Строку заголовков можно не указывать, а разделителем может быть запятая, точка с запятой или табуляция.
+          Дробное количество с запятой возьмите в кавычки: <code>молоко,"1,5",мл</code>.
+        </p>
+
+        <div class="form-actions form-actions--start">
+          <label class="btn btn--ghost btn--file">
+            Выбрать CSV-файл
+            <input type="file" id="fridge-csv-file" accept=".csv,text/csv,text/plain" hidden>
+          </label>
+          <button type="button" class="btn btn--ghost" id="fridge-csv-template">Скачать шаблон</button>
+        </div>
+
+        <label class="field">
+          <span class="field__label">…или вставьте CSV прямо сюда</span>
+          <textarea id="fridge-csv-text" class="input input--area input--mono" rows="6" spellcheck="false"
+            placeholder="мука,1000,г&#10;молоко,1000,мл&#10;яйца,10,шт"></textarea>
+        </label>
+
+        <div class="form-actions form-actions--start">
+          <button type="button" class="btn btn--primary" id="fridge-csv-preview-btn">Проверить</button>
+          <button type="button" class="btn btn--ghost" id="fridge-csv-clear">Очистить</button>
+        </div>
+
+        <div class="preview" id="fridge-csv-preview" hidden></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card__title">Блюда из CSV</h2>
+        <p class="card__text">
+          Колонки: <code>title,section,ingredients,time,steps,notes</code>.
+          <code>section</code> — breakfast, snack, lunch или dinner.
+          <code>ingredients</code> — через «;», каждый в формате <code>название|количество|единица</code>,
+          например <code>яйца|3|шт;сыр|50|г</code>. <code>steps</code> — через «;».
+        </p>
+
+        <div class="form-actions form-actions--start">
+          <label class="btn btn--ghost btn--file">
+            Выбрать CSV-файл
+            <input type="file" id="csv-file" accept=".csv,text/csv,text/plain" hidden>
+          </label>
+          <button type="button" class="btn btn--ghost" id="csv-template">Скачать шаблон</button>
+        </div>
+
+        <label class="field">
+          <span class="field__label">…или вставьте CSV прямо сюда</span>
+          <textarea id="csv-text" class="input input--area input--mono" rows="6" spellcheck="false"
+            placeholder="title,section,ingredients,time,steps,notes&#10;Омлет с сыром,breakfast,яйца|3|шт;сыр|50|г,15,Взбить яйца;Обжарить,Солить в конце"></textarea>
+        </label>
+
+        <div class="form-actions form-actions--start">
+          <button type="button" class="btn btn--primary" id="csv-preview-btn">Проверить</button>
+          <button type="button" class="btn btn--ghost" id="csv-clear">Очистить</button>
+        </div>
+
+        <div class="preview" id="csv-preview" hidden></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card__title">База из JSON</h2>
+        <p class="card__text">Файл, полученный кнопкой «Экспорт JSON». Текущие блюда и холодильник будут заменены — подтверждение спросим отдельно.</p>
+        <div class="form-actions form-actions--start">
+          <label class="btn btn--ghost btn--file">
+            Выбрать JSON-файл
+            <input type="file" id="json-file" accept=".json,application/json" hidden>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================== НАСТРОЙКИ =========================== -->
+    <section class="panel" id="panel-settings" data-panel="settings" aria-labelledby="tab-settings" hidden>
+      <div class="panel__head">
+        <h1 class="panel__title">Настройки и бэкап</h1>
+        <p class="panel__lead">Все данные живут в этом браузере. Бэкап — единственный способ их не потерять.</p>
+      </div>
+
+      <div class="stats" id="settings-stats"></div>
+
+      <div class="card">
+        <h2 class="card__title">Экспорт</h2>
+        <p class="card__text">JSON подходит для полного бэкапа и переноса на другое устройство. CSV удобно открыть в таблице.</p>
+        <div class="form-actions form-actions--start">
+          <button type="button" class="btn btn--primary" id="export-json">⬇ Экспорт JSON</button>
+          <button type="button" class="btn btn--ghost" id="export-csv">⬇ Экспорт блюд в CSV</button>
+          <button type="button" class="btn btn--ghost" id="export-fridge-csv">⬇ Экспорт холодильника</button>
+        </div>
+      </div>
+
+      <div class="card card--danger">
+        <h2 class="card__title">Сброс данных</h2>
+        <p class="card__text">Удалит все блюда и весь холодильник из этого браузера. Действие необратимо — сначала сделайте бэкап.</p>
+        <div class="form-actions form-actions--start">
+          <button type="button" class="btn btn--danger" id="reset-data">Удалить всё</button>
+        </div>
+      </div>
+
+      <div class="card card--soft">
+        <h2 class="card__title">Как это работает</h2>
+        <ul class="notes-list">
+          <li>Сайт полностью статический: ни сервера, ни внешних API — только файлы на GitHub Pages.</li>
+          <li>База хранится в <code>localStorage</code> браузера и не синхронизируется между устройствами: переносите её через экспорт/импорт JSON.</li>
+          <li>Ингредиент считается доступным, если название (без регистра и пробелов) и единица измерения совпадают точно, а количество не меньше нужного.</li>
+          <li>Пересчётов и синонимов нет: «1 ст.л.» и «200 мл» — разные единицы, продукт будет считаться отсутствующим.</li>
+          <li>Очистка данных браузера, режим инкогнито или другой браузер = пустая книга.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Разделы сайта">
+    <button type="button" class="tab is-active" id="tab-recipes" data-tab="recipes" aria-current="page">
+      <span class="tab__icon" aria-hidden="true">📖</span><span class="tab__label">Рецепты</span>
+    </button>
+    <button type="button" class="tab" id="tab-fridge" data-tab="fridge">
+      <span class="tab__icon" aria-hidden="true">🧊</span><span class="tab__label">Холодильник</span>
+    </button>
+    <button type="button" class="tab" id="tab-add" data-tab="add">
+      <span class="tab__icon" aria-hidden="true">➕</span><span class="tab__label">Блюдо</span>
+    </button>
+    <button type="button" class="tab" id="tab-import" data-tab="import">
+      <span class="tab__icon" aria-hidden="true">📥</span><span class="tab__label">Импорт</span>
+    </button>
+    <button type="button" class="tab" id="tab-settings" data-tab="settings">
+      <span class="tab__icon" aria-hidden="true">⚙️</span><span class="tab__label">Настройки</span>
+    </button>
+  </nav>
+
+  <div id="modal-root"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <noscript>
+    <p class="noscript">Для работы кулинарной книги нужен включённый JavaScript.</p>
+  </noscript>
+
+  <script src="js/store.js"></script>
+  <script src="js/matcher.js"></script>
+  <script src="js/csv.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

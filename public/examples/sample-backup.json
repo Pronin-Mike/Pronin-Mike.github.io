@@ -1,0 +1,54 @@
+{
+  "app": "home-cookbook",
+  "version": 1,
+  "exportedAt": "2025-01-01T09:00:00.000Z",
+  "fridge_items": [
+    { "id": "11111111-1111-4111-8111-111111111111", "name": "яйца", "amount": 10, "unit": "шт", "updated_at": null },
+    { "id": "22222222-2222-4222-8222-222222222222", "name": "сыр", "amount": 300, "unit": "г", "updated_at": null },
+    { "id": "33333333-3333-4333-8333-333333333333", "name": "молоко", "amount": 1000, "unit": "мл", "updated_at": null },
+    { "id": "44444444-4444-4444-8444-444444444444", "name": "мука", "amount": 1000, "unit": "г", "updated_at": null },
+    { "id": "55555555-5555-4555-8555-555555555555", "name": "масло", "amount": 200, "unit": "мл", "updated_at": null }
+  ],
+  "dishes": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "title": "Омлет с сыром",
+      "section_id": "breakfast",
+      "time_min": 15,
+      "steps": ["Взбить яйца с молоком", "Добавить тёртый сыр", "Обжарить под крышкой 5 минут"],
+      "notes": "Солить в самом конце",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Паста с сыром",
+      "section_id": "lunch",
+      "time_min": 20,
+      "steps": ["Отварить макароны", "Смешать с маслом", "Посыпать сыром"],
+      "notes": "",
+      "created_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "title": "Салат с маслом",
+      "section_id": "dinner",
+      "time_min": 10,
+      "steps": ["Нарезать овощи", "Заправить маслом"],
+      "notes": "Пример блюда, которое доступно сразу",
+      "created_at": null,
+      "updated_at": null
+    }
+  ],
+  "dish_ingredients": [
+    { "id": "d1111111-1111-4111-8111-111111111111", "dish_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "яйца", "amount": 3, "unit": "шт", "sort_order": 0 },
+    { "id": "d1111111-1111-4111-8111-111111111112", "dish_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "сыр", "amount": 50, "unit": "г", "sort_order": 1 },
+    { "id": "d1111111-1111-4111-8111-111111111113", "dish_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "молоко", "amount": 50, "unit": "мл", "sort_order": 2 },
+    { "id": "d2222222-2222-4222-8222-222222222221", "dish_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "name": "макароны", "amount": 300, "unit": "г", "sort_order": 0 },
+    { "id": "d2222222-2222-4222-8222-222222222222", "dish_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "name": "сыр", "amount": 100, "unit": "г", "sort_order": 1 },
+    { "id": "d2222222-2222-4222-8222-222222222223", "dish_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "name": "масло", "amount": 30, "unit": "г", "sort_order": 2 },
+    { "id": "d3333333-3333-4333-8333-333333333331", "dish_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "name": "огурцы", "amount": 200, "unit": "г", "sort_order": 0 },
+    { "id": "d3333333-3333-4333-8333-333333333332", "dish_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "name": "масло", "amount": 20, "unit": "мл", "sort_order": 1 }
+  ]
+}

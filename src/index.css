@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply min-h-screen bg-cream-100 text-ink antialiased;
+    /* мягкий «домашний» фон */
+    background-image:
+      radial-gradient(1100px 500px at 12% -10%, #fdf1e6 0%, rgba(253, 241, 230, 0) 60%),
+      radial-gradient(900px 460px at 100% 0%, #f4efe4 0%, rgba(244, 239, 228, 0) 55%);
+    background-attachment: fixed;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme('colors.terra.400');
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Уважаем настройку «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

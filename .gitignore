@@ -1,0 +1,21 @@
+# зависимости и сборка
+node_modules/
+dist/
+coverage/
+.npm-cache/
+.tmp-build/
+.vite/
+
+# секреты
+.env
+.env.local
+.env.*.local
+
+# мусор
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

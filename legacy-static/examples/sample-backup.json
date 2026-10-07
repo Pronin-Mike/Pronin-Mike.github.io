@@ -1,0 +1,132 @@
+{
+  "app": "home-cookbook",
+  "version": 1,
+  "exportedAt": "2025-01-01T09:00:00.000Z",
+  "dishes": [
+    {
+      "id": "d-omlet",
+      "title": "Омлет с сыром",
+      "section": "breakfast",
+      "ingredients": [
+        { "name": "яйца", "amount": 3, "unit": "шт" },
+        { "name": "сыр", "amount": 50, "unit": "г" },
+        { "name": "молоко", "amount": 50, "unit": "мл" }
+      ],
+      "time": 15,
+      "steps": [
+        "Взбить яйца с молоком",
+        "Добавить тёртый сыр",
+        "Обжарить под крышкой 5 минут"
+      ],
+      "notes": "Солить в самом конце"
+    },
+    {
+      "id": "d-syrniki",
+      "title": "Сырники",
+      "section": "breakfast",
+      "ingredients": [
+        { "name": "творог", "amount": 400, "unit": "г" },
+        { "name": "яйца", "amount": 2, "unit": "шт" },
+        { "name": "мука", "amount": 100, "unit": "г" },
+        { "name": "сахар", "amount": 50, "unit": "г" }
+      ],
+      "time": 25,
+      "steps": [
+        "Смешать творог, яйца и сахар",
+        "Добавить муку и замесить тесто",
+        "Обжарить по 3 минуты с каждой стороны"
+      ],
+      "notes": "Подавать со сметаной"
+    },
+    {
+      "id": "d-ovsyanka",
+      "title": "Овсяная каша с бананом",
+      "section": "breakfast",
+      "ingredients": [
+        { "name": "овсяные хлопья", "amount": 60, "unit": "г" },
+        { "name": "молоко", "amount": 250, "unit": "мл" },
+        { "name": "банан", "amount": 1, "unit": "шт" }
+      ],
+      "time": 10,
+      "steps": [
+        "Вскипятить молоко",
+        "Добавить хлопья и варить 5 минут",
+        "Положить нарезанный банан"
+      ],
+      "notes": "Можно добавить мёд"
+    },
+    {
+      "id": "d-yabloko",
+      "title": "Яблоко с орехами",
+      "section": "snack",
+      "ingredients": [
+        { "name": "яблоко", "amount": 1, "unit": "шт" },
+        { "name": "грецкие орехи", "amount": 30, "unit": "г" }
+      ],
+      "time": 5,
+      "steps": ["Нарезать яблоко", "Посыпать орехами"],
+      "notes": "Быстрый перекус"
+    },
+    {
+      "id": "d-borsch",
+      "title": "Борщ",
+      "section": "lunch",
+      "ingredients": [
+        { "name": "свёкла", "amount": 300, "unit": "г" },
+        { "name": "капуста", "amount": 200, "unit": "г" },
+        { "name": "картофель", "amount": 300, "unit": "г" },
+        { "name": "мясо", "amount": 500, "unit": "г" },
+        { "name": "вода", "amount": 2000, "unit": "мл" }
+      ],
+      "time": 90,
+      "steps": [
+        "Сварить бульон",
+        "Добавить картофель",
+        "Добавить свёклу и капусту",
+        "Варить 20 минут"
+      ],
+      "notes": "Настоять час"
+    },
+    {
+      "id": "d-pasta",
+      "title": "Паста с сыром",
+      "section": "lunch",
+      "ingredients": [
+        { "name": "макароны", "amount": 300, "unit": "г" },
+        { "name": "сыр", "amount": 100, "unit": "г" },
+        { "name": "масло", "amount": 30, "unit": "г" }
+      ],
+      "time": 20,
+      "steps": ["Отварить макароны", "Смешать с маслом", "Посыпать сыром"],
+      "notes": ""
+    },
+    {
+      "id": "d-salad",
+      "title": "Салат из огурцов и помидоров",
+      "section": "dinner",
+      "ingredients": [
+        { "name": "огурцы", "amount": 200, "unit": "г" },
+        { "name": "помидоры", "amount": 200, "unit": "г" },
+        { "name": "масло", "amount": 20, "unit": "мл" }
+      ],
+      "time": 10,
+      "steps": ["Нарезать овощи", "Заправить маслом"],
+      "notes": "Свежая зелень по желанию"
+    }
+  ],
+  "fridge": [
+    { "id": "p-yajca", "name": "яйца", "amount": 10, "unit": "шт" },
+    { "id": "p-syr", "name": "сыр", "amount": 300, "unit": "г" },
+    { "id": "p-moloko", "name": "молоко", "amount": 1000, "unit": "мл" },
+    { "id": "p-muka", "name": "мука", "amount": 1000, "unit": "г" },
+    { "id": "p-tvorog", "name": "творог", "amount": 400, "unit": "г" },
+    { "id": "p-sahar", "name": "сахар", "amount": 500, "unit": "г" },
+    { "id": "p-hlopya", "name": "овсяные хлопья", "amount": 500, "unit": "г" },
+    { "id": "p-banan", "name": "банан", "amount": 3, "unit": "шт" },
+    { "id": "p-yabloko", "name": "яблоко", "amount": 5, "unit": "шт" },
+    { "id": "p-orehi", "name": "грецкие орехи", "amount": 100, "unit": "г" },
+    { "id": "p-ogurcy", "name": "огурцы", "amount": 300, "unit": "г" },
+    { "id": "p-pomidory", "name": "помидоры", "amount": 300, "unit": "г" },
+    { "id": "p-maslo", "name": "масло", "amount": 200, "unit": "мл" }
+  ]
+}
