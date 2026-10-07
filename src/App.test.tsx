@@ -101,7 +101,11 @@ beforeEach(() => {
 
   fridge = [
     { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null },
-    { id: 'p2', name: 'сыр', amount: 300, unit: 'г', updatedAt: null }
+    { id: 'p2', name: 'сыр', amount: 300, unit: 'г', updatedAt: null },
+    { id: 'p3', name: 'хлеб', amount: 500, unit: 'г', updatedAt: null },
+    { id: 'p4', name: 'молоко', amount: 1000, unit: 'мл', updatedAt: null },
+    { id: 'p5', name: 'огурцы', amount: 300, unit: 'г', updatedAt: null },
+    { id: 'p6', name: 'орехи', amount: 100, unit: 'г', updatedAt: null }
   ];
 
   setSession({ user: { email: 'cook@example.com' } });
@@ -220,7 +224,97 @@ describe('Навигация и защита маршрутов', () => {
 
     expect(await screen.findByText('сыр')).toBeTruthy();
     expect(screen.getByText('яйца')).toBeTruthy();
-    expect(screen.getByText('300 г')).toBeTruthy();
+    expect(screen.getByText('1000 мл')).toBeTruthy();
+  });
+});
+
+describe('Подсказки ингредиентов из холодильника', () => {
+  async function openDishForm(): Promise<void> {
+    render(<App />);
+    await screen.findByText('Омлет с сыром');
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Добавить' })[0]);
+    await screen.findByLabelText('Название ингредиента №1');
+  }
+
+  function nameInput(): HTMLInputElement {
+    return screen.getByLabelText('Название ингредиента №1') as HTMLInputElement;
+  }
+
+  function unitSelect(): HTMLSelectElement {
+    return screen.getByLabelText('Единица измерения ингредиента №1') as HTMLSelectElement;
+  }
+
+  function optionNames(): string[] {
+    const listbox = screen.getByRole('listbox');
+    return within(listbox)
+      .getAllByRole('option')
+      .map((option) => option.querySelector('span')?.textContent?.trim() ?? '');
+  }
+
+  it('«о» показывает огурцы и орехи, но не молоко', async () => {
+    await openDishForm();
+
+    fireEvent.change(nameInput(), { target: { value: 'о' } });
+
+    expect(optionNames()).toEqual(['огурцы', 'орехи']);
+  });
+
+  it('«ог» оставляет только огурцы', async () => {
+    await openDishForm();
+
+    fireEvent.change(nameInput(), { target: { value: 'о' } });
+    expect(optionNames()).toHaveLength(2);
+
+    fireEvent.change(nameInput(), { target: { value: 'ог' } });
+    expect(optionNames()).toEqual(['огурцы']);
+  });
+
+  it('выбор подсказки подставляет название и единицу измерения', async () => {
+    await openDishForm();
+
+    fireEvent.change(nameInput(), { target: { value: 'мол' } });
+    expect(optionNames()).toEqual(['молоко']);
+
+    fireEvent.click(screen.getByRole('option', { name: /молоко/ }));
+
+    expect(nameInput().value).toBe('молоко');
+    expect(unitSelect().value).toBe('мл');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('незнакомый продукт закрывает список, но вводится руками', async () => {
+    await openDishForm();
+
+    fireEvent.change(nameInput(), { target: { value: 'бекон' } });
+
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(nameInput().value).toBe('бекон');
+  });
+
+  it('стрелки и Enter выбирают подсказку с клавиатуры', async () => {
+    await openDishForm();
+
+    const input = nameInput();
+    fireEvent.change(input, { target: { value: 'о' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(nameInput().value).toBe('орехи');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('Escape закрывает список, введённый текст остаётся', async () => {
+    await openDishForm();
+
+    const input = nameInput();
+    fireEvent.change(input, { target: { value: 'ог' } });
+    expect(screen.queryByRole('listbox')).not.toBeNull();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(input.value).toBe('ог');
   });
 });
 

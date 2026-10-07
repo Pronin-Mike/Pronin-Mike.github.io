@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import { Button, Card, Field, Input, SectionTitle, Select, Textarea } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
+import { buildIngredientSuggestions, type IngredientSuggestion } from '../lib/suggestions';
 import { validateDishInput } from '../lib/validation';
 import type { DishIngredient, DishInput, Unit } from '../lib/types';
 
@@ -33,7 +34,7 @@ function emptyForm(sectionId: string): DishInput {
 export default function DishEdit() {
   const { dishId } = useParams<{ dishId: string }>();
   const isEdit = Boolean(dishId);
-  const { sections, dishes, loading, error, reload } = useCookbook();
+  const { sections, dishes, fridge, loading, error, reload } = useCookbook();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -41,6 +42,9 @@ export default function DishEdit() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+
+  /** Подсказки для поля названия ингредиента — из текущего холодильника. */
+  const suggestions = useMemo(() => buildIngredientSuggestions(fridge), [fridge]);
 
   const existing = useMemo(
     () => (dishId ? (dishes.find((item) => item.id === dishId) ?? null) : null),
@@ -88,6 +92,11 @@ export default function DishEdit() {
       const next = prev.ingredients.filter((_, position) => position !== index);
       return { ...prev, ingredients: next.length ? next : [emptyIngredient()] };
     });
+  };
+
+  /** Выбор подсказки: подставляем и название, и единицу из холодильника. */
+  const pickIngredient = (index: number, suggestion: IngredientSuggestion) => {
+    updateIngredient(index, { name: suggestion.name, unit: suggestion.unit });
   };
 
   const updateStep = (index: number, value: string) => {
@@ -235,6 +244,10 @@ export default function DishEdit() {
 
       <Card className="flex flex-col gap-3">
         <SectionTitle count={form.ingredients.length}>Ингредиенты</SectionTitle>
+        <p className="text-xs text-ink-muted">
+          Начните вводить название — подскажем продукты из холодильника вместе с их единицей
+          измерения. Если продукта в холодильнике нет, просто впишите его руками.
+        </p>
         <div className="flex flex-col gap-2">
           {form.ingredients.map((ingredient, index) => (
             <IngredientEditorRow
@@ -242,8 +255,10 @@ export default function DishEdit() {
               ingredient={ingredient}
               index={index}
               disabled={busy}
+              suggestions={suggestions}
               onChange={updateIngredient}
               onRemove={removeIngredient}
+              onPick={pickIngredient}
             />
           ))}
         </div>

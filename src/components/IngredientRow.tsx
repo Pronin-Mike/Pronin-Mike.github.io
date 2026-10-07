@@ -2,6 +2,8 @@ import { Trash2 } from 'lucide-react';
 import type { DishIngredient, MissingIngredient } from '../lib/types';
 import { UNITS } from '../lib/types';
 import { formatAmount } from '../lib/format';
+import type { IngredientSuggestion } from '../lib/suggestions';
+import IngredientNameInput from './IngredientNameInput';
 import { Button, Input, Select, cn } from './ui';
 
 /* ============================================================================
@@ -12,25 +14,32 @@ export interface IngredientEditorRowProps {
   ingredient: DishIngredient;
   index: number;
   disabled?: boolean;
+  /** Подсказки из холодильника для поля названия. */
+  suggestions?: IngredientSuggestion[];
   onChange: (index: number, patch: Partial<DishIngredient>) => void;
   onRemove: (index: number) => void;
+  onPick?: (index: number, suggestion: IngredientSuggestion) => void;
 }
 
 export function IngredientEditorRow({
   ingredient,
   index,
   disabled,
+  suggestions = [],
   onChange,
-  onRemove
+  onRemove,
+  onPick
 }: IngredientEditorRowProps) {
   return (
     <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 rounded-xl border border-cream-300 bg-white p-2.5 md:grid-cols-[1.6fr_0.7fr_0.7fr_auto]">
-      <Input
+      <IngredientNameInput
         value={ingredient.name}
+        suggestions={suggestions}
         disabled={disabled}
         placeholder="мука"
-        aria-label={`Название ингредиента №${index + 1}`}
-        onChange={(event) => onChange(index, { name: event.target.value })}
+        ariaLabel={`Название ингредиента №${index + 1}`}
+        onChange={(name) => onChange(index, { name })}
+        onPick={(suggestion) => onPick?.(index, suggestion)}
       />
       <Input
         value={Number.isFinite(ingredient.amount) ? String(ingredient.amount) : ''}
