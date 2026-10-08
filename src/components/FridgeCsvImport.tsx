@@ -22,17 +22,17 @@ const MODES: Array<{ value: FridgeImportMode; label: string; hint: string }> = [
   {
     value: 'merge',
     label: 'Обновлять совпадающие названия',
-    hint: 'Уже имеющиеся продукты получат количество из файла, новые добавятся.'
+    hint: 'Уже имеющиеся продукты получат количество из файла, новые добавятся. Дата из файла перекрывает текущую; пусто — остаётся прежняя.'
   },
   {
     value: 'sum',
     label: 'Прибавлять к текущему количеству',
-    hint: 'Складывается только при полном совпадении единицы измерения.'
+    hint: 'Складывается только при полном совпадении единицы измерения. Срок годности берётся самый ранний из двух.'
   },
   {
     value: 'replace',
     label: 'Заменить холодильник целиком',
-    hint: 'Всё, чего нет в файле, будет удалено.'
+    hint: 'Всё, чего нет в файле, будет удалено. Сроки годности — только из файла.'
   }
 ];
 
@@ -57,7 +57,7 @@ export default function FridgeCsvImport() {
   const [clearOpen, setClearOpen] = useState(false);
 
   const plan = useMemo(
-    () => (parsed ? planFridgeImport(parsed.items.map((row) => row.item), fridge, mode) : null),
+    () => (parsed ? planFridgeImport(parsed.items.map((row) => row.item), fridge, mode, new Date()) : null),
     [parsed, fridge, mode]
   );
 
@@ -115,7 +115,14 @@ export default function FridgeCsvImport() {
     }
     downloadTextFile(
       'cookbook-fridge.csv',
-      toFridgeCSV(fridge.map((item) => ({ name: item.name, amount: item.amount, unit: item.unit }))),
+      toFridgeCSV(
+        fridge.map((item) => ({
+          name: item.name,
+          amount: item.amount,
+          unit: item.unit,
+          expiresAt: item.expiresAt
+        }))
+      ),
       'text/csv'
     );
     toast.show(`Выгружено ${productWord(fridge.length)} в CSV.`, 'success');
@@ -128,12 +135,16 @@ export default function FridgeCsvImport() {
         Холодильник из CSV
       </h2>
       <p className="text-sm leading-relaxed text-ink-soft">
-        Колонки: <code className="rounded bg-cream-100 px-1.5 py-0.5">name,amount,unit</code> — по одной
-        строке на продукт, например <code className="rounded bg-cream-100 px-1.5 py-0.5">мука,1000,г</code>.
+        Колонки: <code className="rounded bg-cream-100 px-1.5 py-0.5">name,amount,unit</code> и
+        необязательная <code className="rounded bg-cream-100 px-1.5 py-0.5">expires_at</code> (срок
+        годности, <code className="rounded bg-cream-100 px-1.5 py-0.5">ГГГГ-ММ-ДД</code>) — по одной
+        строке на продукт, например{' '}
+        <code className="rounded bg-cream-100 px-1.5 py-0.5">творог,500,г,2026-10-15</code>.
         Единица измерения — только <code className="rounded bg-cream-100 px-1.5 py-0.5">г</code>,{' '}
         <code className="rounded bg-cream-100 px-1.5 py-0.5">мл</code> или{' '}
         <code className="rounded bg-cream-100 px-1.5 py-0.5">шт</code> (латиница g/ml/pcs тоже понимается).
-        Строку заголовков можно не указывать, разделитель — «,», «;» или табуляция.
+        Строку заголовков можно не указывать, разделитель — «,», «;» или табуляция. Если дата не
+        указана, подставляется типовой срок хранения продукта.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -172,7 +183,7 @@ export default function FridgeCsvImport() {
           rows={6}
           spellCheck={false}
           className="font-mono text-[13px]"
-          placeholder={'мука,1000,г\nмолоко,1000,мл\nяйца,10,шт'}
+          placeholder={'творог,500,г,2026-10-15\nмолоко,1000,мл,2026-10-14\nсоль,300,г,\nяйца,10,шт,2026-11-07'}
           onChange={(event) => setText(event.target.value)}
         />
       </Field>
@@ -288,6 +299,7 @@ export default function FridgeCsvImport() {
                       <th className="px-3 py-2">Продукт</th>
                       <th className="px-3 py-2">Количество</th>
                       <th className="px-3 py-2">Ед.</th>
+                      <th className="px-3 py-2">Срок годности</th>
                       <th className="px-3 py-2">Что будет</th>
                     </tr>
                   </thead>
@@ -302,6 +314,9 @@ export default function FridgeCsvImport() {
                           <td className="px-3 py-2 font-semibold text-ink">{entry.name || '—'}</td>
                           <td className="px-3 py-2 tabular-nums text-ink-soft">{formatAmount(entry.amount)}</td>
                           <td className="px-3 py-2 text-ink-soft">{entry.unit}</td>
+                          <td className="px-3 py-2 tabular-nums whitespace-nowrap text-ink-soft">
+                            {entry.expiresAt ?? '—'}
+                          </td>
                           <td className="px-3 py-2">
                             <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold', style.className)}>
                               {note}

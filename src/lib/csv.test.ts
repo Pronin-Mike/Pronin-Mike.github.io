@@ -152,8 +152,8 @@ describe('parseFridgeCSV', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.hasHeader).toBe(true);
     expect(result.items.map((row) => row.item)).toEqual([
-      { name: 'мука', amount: 1000, unit: 'г' },
-      { name: 'яйца', amount: 10, unit: 'шт' }
+      { name: 'мука', amount: 1000, unit: 'г', expiresAt: null },
+      { name: 'яйца', amount: 10, unit: 'шт', expiresAt: null }
     ]);
   });
 
@@ -169,7 +169,7 @@ describe('parseFridgeCSV', () => {
     const result = parseFridgeCSV('название;количество;единица\nсыр;300;g\nсок;1;л');
     expect(result.delimiter).toBe(';');
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].item).toEqual({ name: 'сыр', amount: 300, unit: 'г' });
+    expect(result.items[0].item).toEqual({ name: 'сыр', amount: 300, unit: 'г', expiresAt: null });
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].row).toBe(3);
     expect(result.errors[0].message).toMatch(/Единица измерения/);
@@ -191,7 +191,7 @@ describe('parseFridgeCSV', () => {
   it('пример файла холодильника разбирается без ошибок', () => {
     const result = parseFridgeCSV(fridgeCsvTemplate());
     expect(result.errors).toHaveLength(0);
-    expect(result.items).toHaveLength(3);
+    expect(result.items).toHaveLength(4);
   });
 
   it('экспорт и повторный разбор не теряют данные', () => {

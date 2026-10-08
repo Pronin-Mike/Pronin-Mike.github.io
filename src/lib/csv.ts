@@ -3,17 +3,20 @@
  *
  * Два формата:
  *   блюда       — title,section,ingredients,time,steps,notes
- *   холодильник — name,amount,unit
+ *   холодильник — name,amount,unit,expires_at (последняя колонка необязательна)
  *
  * Разделитель колонок определяется автоматически: «,», «;» или табуляция.
  * ========================================================================== */
 
 import type { DishIngredient, DishInput, FridgeInput, Unit } from './types';
 import { isUnit } from './types';
+import { defaultExpiresAt } from './shelfLife';
 import { validateDishInput } from './validation';
 
 export const DISH_CSV_COLUMNS = ['title', 'section', 'ingredients', 'time', 'steps', 'notes'] as const;
 export const FRIDGE_CSV_COLUMNS = ['name', 'amount', 'unit'] as const;
+/** Колонка срока годности — необязательная: файл без неё читается как раньше. */
+export const FRIDGE_EXPIRES_COLUMN = 'expires_at';
 
 export interface CsvError {
   row: number;
@@ -100,8 +103,35 @@ const FRIDGE_HEADER_ALIASES: Record<string, string> = {
   'единица': 'unit',
   'ед': 'unit',
   'ед.': 'unit',
-  'единицаизмерения': 'unit'
+  'единицаизмерения': 'unit',
+  'expires_at': FRIDGE_EXPIRES_COLUMN,
+  'expiresat': FRIDGE_EXPIRES_COLUMN,
+  'expires': FRIDGE_EXPIRES_COLUMN,
+  'срокгодности': FRIDGE_EXPIRES_COLUMN,
+  'срок': FRIDGE_EXPIRES_COLUMN,
+  'годендо': FRIDGE_EXPIRES_COLUMN,
+  'дата': FRIDGE_EXPIRES_COLUMN
 };
+
+/**
+ * Разбирает дату срока годности: YYYY-MM-DD или пусто.
+ * @returns дата, null (пусто) либо 'invalid' — неверный формат.
+ */
+export function parseFridgeDate(value: unknown): string | null | 'invalid' {
+  const text = cleanText(value);
+  if (!text) return null;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return 'invalid';
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const sane =
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return sane ? text : 'invalid';
+}
 
 function cleanText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -390,6 +420,7 @@ function parseFridgeRecord(record: Record<string, string>): { item: FridgeInput 
   const name = cleanText(record.name);
   const amount = parseAmount(record.amount);
   const unit = parseUnit(record.unit);
+  const expires = parseFridgeDate(record[FRIDGE_EXPIRES_COLUMN]);
   const errors: string[] = [];
 
   if (!name) errors.push('Укажите название продукта.');
@@ -400,9 +431,11 @@ function parseFridgeRecord(record: Record<string, string>): { item: FridgeInput 
 
   if (!unit) errors.push('Единица измерения — только г, мл или шт.');
 
+  if (expires === 'invalid') errors.push('Срок годности — в формате ГГГГ-ММ-ДД.');
+
   if (errors.length || !unit) return { item: null, errors };
 
-  return { item: { name, amount, unit }, errors: [] };
+  return { item: { name, amount, unit, expiresAt: expires === 'invalid' ? null : expires }, errors: [] };
 }
 
 /**
@@ -424,13 +457,14 @@ export function parseFridgeCSV(text: string): FridgeCsvParseResult {
   const hasHeader = header.includes('name');
 
   if (hasHeader) {
+    // expires_at — необязательная колонка, обязательны только три первых.
     const missing = FRIDGE_CSV_COLUMNS.filter((column) => !header.includes(column));
     if (missing.length) {
       return {
         items,
         errors: [{
           row: 1,
-          message: `Не найдены колонки: ${missing.join(', ')}. Ожидаются name, amount, unit.`
+          message: `Не найдены колонки: ${missing.join(', ')}. Ожидаются name, amount, unit (и необязательная expires_at).`
         }],
         dataRows: 0,
         delimiter,
@@ -439,7 +473,7 @@ export function parseFridgeCSV(text: string): FridgeCsvParseResult {
     }
   }
 
-  const map = hasHeader ? header : [...FRIDGE_CSV_COLUMNS];
+  const map = hasHeader ? [...header] : [...FRIDGE_CSV_COLUMNS];
   const start = hasHeader ? 1 : 0;
   const dataRows = rows.slice(start);
 
@@ -466,21 +500,24 @@ export function parseFridgeCSV(text: string): FridgeCsvParseResult {
 
 /** @returns {string} CSV холодильника (для экспорта и шаблона). */
 export function toFridgeCSV(items: FridgeInput[]): string {
-  const lines = [FRIDGE_CSV_COLUMNS.join(',')];
+  const lines = [[...FRIDGE_CSV_COLUMNS, FRIDGE_EXPIRES_COLUMN].join(',')];
   items.forEach((item) => {
     const name = /[",;\n]/.test(item.name) ? `"${item.name.replace(/"/g, '""')}"` : item.name;
-    lines.push(`${name},${item.amount},${item.unit}`);
+    lines.push(`${name},${item.amount},${item.unit},${item.expiresAt ?? ''}`);
   });
   // BOM, чтобы Excel открыл файл в UTF-8
   return `\uFEFF${lines.join('\r\n')}\r\n`;
 }
 
 export function fridgeCsvTemplate(): string {
-  return toFridgeCSV([
-    { name: 'мука', amount: 1000, unit: 'г' },
+  const rows: FridgeInput[] = [
+    { name: 'творог', amount: 500, unit: 'г' },
     { name: 'молоко', amount: 1000, unit: 'мл' },
+    { name: 'соль', amount: 300, unit: 'г' },
     { name: 'яйца', amount: 10, unit: 'шт' }
-  ]);
+  ];
+  // В шаблоне показываем типовой срок годности — колонка необязательная.
+  return toFridgeCSV(rows.map((row) => ({ ...row, expiresAt: defaultExpiresAt(row.name) })));
 }
 
 /** Шаблон CSV с примером — отдаётся кнопкой «Скачать шаблон». */

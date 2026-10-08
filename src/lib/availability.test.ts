@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import {
   availableDishes,
   checkDish,
@@ -16,9 +16,9 @@ import type { Dish, DishIngredient, FridgeItem } from './types';
  * ========================================================================== */
 
 const fridge: FridgeItem[] = [
-  { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null },
-  { id: 'p2', name: 'сыр', amount: 120, unit: 'г', updatedAt: null },
-  { id: 'p3', name: 'Масло сливочное', amount: 200, unit: 'мл', updatedAt: null }
+  { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null },
+  { id: 'p2', name: 'сыр', amount: 120, unit: 'г', updatedAt: null, expiresAt: null },
+  { id: 'p3', name: 'Масло сливочное', amount: 200, unit: 'мл', updatedAt: null, expiresAt: null }
 ];
 
 function makeDish(ingredients: DishIngredient[], title = 'Тестовое блюдо'): Dish {
@@ -102,8 +102,8 @@ describe('checkDish', () => {
 
   it('одинаковые продукты в холодильнике складываются', () => {
     const index = indexFridge([
-      { id: 'a', name: 'мука', amount: 500, unit: 'г', updatedAt: null },
-      { id: 'b', name: 'МУКА', amount: 700, unit: 'г', updatedAt: null }
+      { id: 'a', name: 'мука', amount: 500, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'b', name: 'МУКА', amount: 700, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
     const dish = makeDish([{ name: 'мука', amount: 1200, unit: 'г', sortOrder: 0 }]);
     expect(checkDish(dish, index).available).toBe(true);

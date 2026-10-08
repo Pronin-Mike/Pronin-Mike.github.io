@@ -8,8 +8,9 @@ import { useToast } from '../components/Toast';
 import { Badge, Button, Card, SectionTitle } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
-import { checkDish, missingText, normalizeName } from '../lib/availability';
+import { checkDish, fridgeKey, missingText, normalizeName } from '../lib/availability';
 import { formatTime, sectionEmoji } from '../lib/format';
+import { getExpiryStatus } from '../lib/shelfLife';
 
 /* ============================================================================
  * DishDetail.tsx — просмотр рецепта и кнопка «Приготовить»
@@ -37,10 +38,15 @@ export default function DishDetail() {
     setBusy(true);
     try {
       const result = await cook(dish.id);
-      if (result.success) {
-        toast.show(`«${dish.title}» приготовлено — продукты списаны.`, 'success');
-      } else {
+      if (!result.success) {
         toast.show(`Не хватает: ${missingText(result.missing)}`, 'error');
+      } else if (result.expiredWarning?.length) {
+        toast.show(
+          `Приготовлено. Использованы просроченные продукты: ${result.expiredWarning.join(', ')}`,
+          'warning'
+        );
+      } else {
+        toast.show(`«${dish.title}» приготовлено — продукты списаны.`, 'success');
       }
     } catch (caught) {
       toast.show(caught instanceof Error ? caught.message : 'Не удалось приготовить блюдо', 'error');
@@ -157,11 +163,15 @@ export default function DishDetail() {
                 normalizeName(item.name) === normalizeName(ingredient.name) &&
                 item.unit === ingredient.unit
             );
+            const product = fridgeIndex.get(fridgeKey(ingredient.name, ingredient.unit));
+            const expiresAt =
+              product && getExpiryStatus(product.expiresAt) === 'expired' ? product.expiresAt : null;
             return (
               <IngredientViewRow
                 key={`${ingredient.name}-${ingredient.unit}-${ingredient.sortOrder}`}
                 ingredient={ingredient}
                 missing={missing}
+                expiresAt={expiresAt}
               />
             );
           })}

@@ -95,17 +95,53 @@ function planFromLastCall(): FridgeImportPlan {
   return last[0];
 }
 
+/** Дата «сегодня + N дней» в формате YYYY-MM-DD (как считает shelfLife). */
+function datePlusDays(days: number): string {
+  const today = new Date();
+  const stamp = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return new Date(stamp + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Заполняет форму добавления продукта в холодильнике. */
+function fillFridgeForm(name: string, amount: string, expiresAt?: string): HTMLButtonElement {
+  fireEvent.change(screen.getByLabelText(/^Название/), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText(/^Количество/), { target: { value: amount } });
+  if (expiresAt !== undefined) {
+    fireEvent.change(screen.getByLabelText(/^Срок годности/), { target: { value: expiresAt } });
+  }
+  return screen.getByRole('button', { name: 'Добавить' }) as HTMLButtonElement;
+}
+
+/** Поле срока годности в форме. */
+function expiryField(): HTMLInputElement {
+  return screen.getByLabelText(/^Срок годности/) as HTMLInputElement;
+}
+
+/** Строка продукта в списке холодильника. */
+function fridgeRow(name: string): HTMLElement | null {
+  const nameNode = screen.queryByText(name);
+  return nameNode ? nameNode.closest('li') : null;
+}
+
+/** Переход на страницу холодильника. */
+async function openFridgePage(): Promise<void> {
+  render(<App />);
+  await screen.findByText('Омлет с сыром');
+  fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
+  await screen.findByRole('heading', { name: 'Холодильник' });
+}
+
 beforeEach(() => {
   // HashRouter читает window.location, а он живёт между тестами одного файла
   window.history.replaceState(null, '', '#/');
 
   fridge = [
-    { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null },
-    { id: 'p2', name: 'сыр', amount: 300, unit: 'г', updatedAt: null },
-    { id: 'p3', name: 'хлеб', amount: 500, unit: 'г', updatedAt: null },
-    { id: 'p4', name: 'молоко', amount: 1000, unit: 'мл', updatedAt: null },
-    { id: 'p5', name: 'огурцы', amount: 300, unit: 'г', updatedAt: null },
-    { id: 'p6', name: 'орехи', amount: 100, unit: 'г', updatedAt: null }
+    { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null },
+    { id: 'p2', name: 'сыр', amount: 300, unit: 'г', updatedAt: null, expiresAt: null },
+    { id: 'p3', name: 'хлеб', amount: 500, unit: 'г', updatedAt: null, expiresAt: null },
+    { id: 'p4', name: 'молоко', amount: 1000, unit: 'мл', updatedAt: null, expiresAt: null },
+    { id: 'p5', name: 'огурцы', amount: 300, unit: 'г', updatedAt: null, expiresAt: null },
+    { id: 'p6', name: 'орехи', amount: 100, unit: 'г', updatedAt: null, expiresAt: null }
   ];
 
   setSession({ user: { email: 'cook@example.com' } });
@@ -115,9 +151,39 @@ beforeEach(() => {
 
   vi.mocked(api.fetchSections).mockImplementation(async () => SECTIONS);
   vi.mocked(api.fetchDishes).mockImplementation(async () => [OMELETTE, BORSCH]);
-  vi.mocked(api.fetchFridge).mockImplementation(async () => fridge);
+  // Копия массива: тот же ссылочный объект React счёл бы «тем же состоянием».
+  vi.mocked(api.fetchFridge).mockImplementation(async () => [...fridge]);
   vi.mocked(api.cookDish).mockResolvedValue({ success: true, missing: [] });
   vi.mocked(api.applyFridgeImport).mockImplementation(async (plan) => plan.counts);
+  vi.mocked(api.addFridgeItem).mockImplementation(async (input) => {
+    const created: FridgeItem = {
+      id: `p${fridge.length + 1}`,
+      name: input.name.trim(),
+      amount: input.amount,
+      unit: input.unit,
+      updatedAt: null,
+      expiresAt: input.expiresAt ?? null
+    };
+    fridge.push(created);
+    return created;
+  });
+  vi.mocked(api.updateFridgeItem).mockImplementation(async (id, patch) => {
+    const existing = fridge.find((item) => item.id === id);
+    return {
+      id,
+      name: patch.name ?? existing?.name ?? '',
+      amount: patch.amount ?? existing?.amount ?? 0,
+      unit: patch.unit ?? existing?.unit ?? 'г',
+      updatedAt: null,
+      expiresAt: patch.expiresAt ?? existing?.expiresAt ?? null
+    };
+  });
+  vi.mocked(api.deleteFridgeItem).mockImplementation(async (id) => {
+    // Меняем массив на месте: мок fetchFridge замыкается на эту же переменную.
+    const rest = fridge.filter((item) => item.id !== id);
+    fridge.length = 0;
+    fridge.push(...rest);
+  });
 });
 
 afterEach(() => {
@@ -176,7 +242,7 @@ describe('Recipes', () => {
 
     // после готовки яйца закончились
     vi.mocked(api.cookDish).mockImplementation(async () => {
-      fridge = [{ id: 'p2', name: 'сыр', amount: 250, unit: 'г', updatedAt: null }];
+      fridge = [{ id: 'p2', name: 'сыр', amount: 250, unit: 'г', updatedAt: null, expiresAt: null }];
       return { success: true, missing: [] };
     });
 
@@ -352,8 +418,12 @@ describe('Импорт холодильника из CSV', () => {
 
     const plan = planFromLastCall();
     expect(plan.mode).toBe('merge');
-    expect(plan.inserts).toEqual([{ name: 'мука', amount: 2000, unit: 'г' }]);
-    expect(plan.updates).toEqual([{ id: 'p1', patch: { name: 'яйца', amount: 12, unit: 'шт' } }]);
+    expect(plan.inserts).toEqual([
+      { name: 'мука', amount: 2000, unit: 'г', expiresAt: null }
+    ]);
+    expect(plan.updates).toEqual([
+      { id: 'p1', patch: { name: 'яйца', amount: 12, unit: 'шт', expiresAt: datePlusDays(30) } }
+    ]);
   });
 
   it('в режиме «прибавлять» складывает количество', async () => {
@@ -373,7 +443,9 @@ describe('Импорт холодильника из CSV', () => {
     const plan = planFromLastCall();
     expect(plan.mode).toBe('sum');
     expect(plan.counts).toEqual({ added: 1, updated: 0, summed: 1, skipped: 0 });
-    expect(plan.updates).toEqual([{ id: 'p1', patch: { name: 'яйца', amount: 22, unit: 'шт' } }]);
+    expect(plan.updates).toEqual([
+      { id: 'p1', patch: { name: 'яйца', amount: 22, unit: 'шт', expiresAt: datePlusDays(30) } }
+    ]);
   });
 
   it('показывает ошибки строк и импортирует корректные', async () => {
@@ -392,7 +464,76 @@ describe('Импорт холодильника из CSV', () => {
     await waitFor(() => expect(api.applyFridgeImport).toHaveBeenCalledTimes(1));
 
     const plan = planFromLastCall();
-    expect(plan.inserts).toEqual([{ name: 'творог', amount: 400, unit: 'г' }]);
+    expect(plan.inserts).toEqual([
+      { name: 'творог', amount: 400, unit: 'г', expiresAt: datePlusDays(7) }
+    ]);
     expect(plan.counts).toEqual({ added: 1, updated: 0, summed: 0, skipped: 0 });
+  });
+});
+
+describe('Сроки годности', () => {
+  it('подставляет типовой срок при вводе названия и показывает бейдж', async () => {
+    await openFridgePage();
+
+    fillFridgeForm('творог', '500');
+
+    // Срок подставился сам: творог хранится 7 дней.
+    expect(expiryField().value).toBe(datePlusDays(7));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+
+    await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.addFridgeItem).mock.calls[0][0].expiresAt).toBe(datePlusDays(7));
+
+    const nameNode = await screen.findByText('творог');
+    const row = nameNode.closest('li');
+    if (!row) throw new Error('Не найдена строка «творог»');
+    expect(within(row).getByText(/через 7 дней/)).toBeTruthy();
+  });
+
+  it('подставляет срок «вечным» продуктам только вручную', async () => {
+    await openFridgePage();
+
+    fillFridgeForm('соль', '300');
+    expect(expiryField().value).toBe('');
+  });
+
+  it('продукт с прошедшей датой показывает блок «Просрочено»', async () => {
+    await openFridgePage();
+
+    fillFridgeForm('кефир', '500', datePlusDays(-2));
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+
+    // Дата в прошлом — переспрашиваем и сохраняем по подтверждению.
+    const dialog = await screen.findByRole('dialog', { name: 'Дата уже прошла' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Да, сохранить' }));
+
+    await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getAllByRole('link', { name: /Рецепты/ })[0]);
+
+    expect(await screen.findByText('Просрочено')).toBeTruthy();
+    expect(screen.getAllByText(/просрочено на 2 дн\./).length).toBeGreaterThan(0);
+  });
+
+  it('кнопка «Выбросить» убирает продукт из холодильника', async () => {
+    fridge = [
+      { id: 'p1', name: 'кефир', amount: 500, unit: 'мл', updatedAt: null, expiresAt: datePlusDays(-2) },
+      { id: 'p2', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null }
+    ];
+
+    render(<App />);
+    await screen.findByText('Омлет с сыром');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбросить «кефир»' }));
+
+    await waitFor(() => expect(api.deleteFridgeItem).toHaveBeenCalledWith('p1'));
+    await waitFor(() => expect(screen.queryByText('кефир', { selector: 'span' })).toBeNull());
+
+    // В холодильнике продукт тоже исчез.
+    fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
+    await screen.findByRole('heading', { name: 'Холодильник' });
+    expect(fridgeRow('кефир')).toBeNull();
+    expect(screen.getByText('яйца')).toBeTruthy();
   });
 });

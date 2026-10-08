@@ -1,26 +1,48 @@
 import { Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
-import type { Availability, Dish } from '../lib/types';
+import type { Availability, Dish, FridgeItem } from '../lib/types';
+import { fridgeKey } from '../lib/availability';
 import { formatAmount, formatTime, sectionEmoji } from '../lib/format';
+import { getExpiryStatus } from '../lib/shelfLife';
 import { Button, cn } from './ui';
 
 /* ============================================================================
  * DishCard.tsx — карточка блюда: активная или серая (не хватает продуктов).
+ * Просроченные ингредиенты не делают блюдо недоступным, но помечаются красным.
  * ========================================================================== */
 
 export interface DishCardProps {
   dish: Dish;
   availability: Availability;
+  /** Холодильник для проверки сроков годности (по ключу «название|единица»). */
+  fridgeIndex?: Map<string, FridgeItem>;
   cooking?: boolean;
   onCook: (dish: Dish) => void;
 }
 
-export default function DishCard({ dish, availability, cooking = false, onCook }: DishCardProps) {
+export default function DishCard({
+  dish,
+  availability,
+  fridgeIndex,
+  cooking = false,
+  onCook
+}: DishCardProps) {
   const href = `/${dish.sectionId}/${dish.id}`;
   const available = availability.available;
   const ingredientsLine = dish.ingredients
     .map((item) => `${item.name} ${formatAmount(item.amount)} ${item.unit}`)
     .join(' · ');
+
+  /** Просроченные продукты, которые нужны этому блюду. */
+  const expiredNames = fridgeIndex
+    ? [...new Set(
+        dish.ingredients
+          .map((ingredient) => fridgeIndex.get(fridgeKey(ingredient.name, ingredient.unit)))
+          .filter((item): item is FridgeItem => Boolean(item))
+          .filter((item) => getExpiryStatus(item.expiresAt) === 'expired')
+          .map((item) => item.name)
+      )]
+    : [];
 
   return (
     <article
@@ -75,6 +97,12 @@ export default function DishCard({ dish, availability, cooking = false, onCook }
       {!available ? (
         <p className="border-t border-honey-100 bg-honey-50 px-4 py-2 text-xs font-semibold text-honey-700">
           Не хватает: {availability.missingText}
+        </p>
+      ) : null}
+
+      {expiredNames.length ? (
+        <p className="border-t border-berry-200 bg-berry-50 px-4 py-2 text-xs font-semibold text-berry-700">
+          Просрочено: {expiredNames.join(', ')}
         </p>
       ) : null}
     </article>

@@ -2,13 +2,16 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search, ShoppingBasket, X } from 'lucide-react';
 import DishCard from '../components/DishCard';
+import ExpiredBlock from '../components/ExpiredBlock';
+import ExpiringBlock from '../components/ExpiringBlock';
 import { SkeletonCards } from '../components/Loading';
 import { useToast } from '../components/Toast';
 import { Button, Card, cn, Input, SectionTitle } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
-import { checkDish, missingText } from '../lib/availability';
+import { checkDish, fridgeKey, missingText } from '../lib/availability';
 import { sectionEmoji } from '../lib/format';
-import type { Dish } from '../lib/types';
+import { getExpiryStatus } from '../lib/shelfLife';
+import type { Dish, FridgeItem } from '../lib/types';
 
 /* ============================================================================
  * Recipes.tsx — список блюд по разделам с поиском и фильтром
@@ -16,6 +19,18 @@ import type { Dish } from '../lib/types';
  * ========================================================================== */
 
 const ALL_SECTIONS = 'all';
+
+/** Сколько скоропортящихся продуктов блюдо «спасает» (soon или today). */
+function rescueCount(dish: Dish, fridgeIndex: Map<string, FridgeItem>): number {
+  const keys = new Set<string>();
+  for (const ingredient of dish.ingredients) {
+    const product = fridgeIndex.get(fridgeKey(ingredient.name, ingredient.unit));
+    if (!product) continue;
+    const status = getExpiryStatus(product.expiresAt);
+    if (status === 'soon' || status === 'today') keys.add(fridgeKey(product.name, product.unit));
+  }
+  return keys.size;
+}
 
 export default function Recipes() {
   const { sections, dishes, fridge, fridgeIndex, loading, error, reload, cook } = useCookbook();
@@ -70,9 +85,15 @@ export default function Recipes() {
       if (a.availability.available !== b.availability.available) {
         return a.availability.available ? -1 : 1;
       }
+      // В режиме «Что приготовить» выше те блюда, что спасают больше
+      // скоропортящихся продуктов (soon/today).
+      if (onlyAvailable) {
+        const diff = rescueCount(b.dish, fridgeIndex) - rescueCount(a.dish, fridgeIndex);
+        if (diff !== 0) return diff;
+      }
       return a.dish.title.localeCompare(b.dish.title, 'ru');
     });
-  }, [decorated, sectionId, query, onlyAvailable]);
+  }, [decorated, sectionId, query, onlyAvailable, fridgeIndex]);
 
   const availableCount = useMemo(
     () => decorated.filter((item) => item.availability.available).length,
@@ -83,10 +104,15 @@ export default function Recipes() {
     setCookingId(dish.id);
     try {
       const result = await cook(dish.id);
-      if (result.success) {
-        toast.show(`«${dish.title}» приготовлено — продукты списаны.`, 'success');
-      } else {
+      if (!result.success) {
         toast.show(`Не хватает: ${missingText(result.missing)}`, 'error');
+      } else if (result.expiredWarning?.length) {
+        toast.show(
+          `«${dish.title}» приготовлено. Использованы просроченные продукты: ${result.expiredWarning.join(', ')}`,
+          'warning'
+        );
+      } else {
+        toast.show(`«${dish.title}» приготовлено — продукты списаны.`, 'success');
       }
     } catch (caught) {
       toast.show(caught instanceof Error ? caught.message : 'Не удалось приготовить блюдо', 'error');
@@ -138,6 +164,13 @@ export default function Recipes() {
             Заполнить
           </Link>
         </div>
+      ) : null}
+
+      {!loading ? (
+        <>
+          <ExpiredBlock />
+          <ExpiringBlock />
+        </>
       ) : null}
 
       <div className="flex flex-col gap-3">
@@ -217,6 +250,7 @@ export default function Recipes() {
               key={item.dish.id}
               dish={item.dish}
               availability={item.availability}
+              fridgeIndex={fridgeIndex}
               cooking={cookingId === item.dish.id}
               onCook={(dish) => void handleCook(dish)}
             />

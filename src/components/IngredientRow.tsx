@@ -4,6 +4,7 @@ import { UNITS } from '../lib/types';
 import { formatAmount } from '../lib/format';
 import type { IngredientSuggestion } from '../lib/suggestions';
 import IngredientNameInput from './IngredientNameInput';
+import ShelfLifeBadge from './ShelfLifeBadge';
 import { Button, Input, Select, cn } from './ui';
 
 /* ============================================================================
@@ -81,10 +82,12 @@ export function IngredientEditorRow({
 export interface IngredientViewRowProps {
   ingredient: DishIngredient;
   missing?: MissingIngredient;
+  /** Продукт в холодильнике просрочен — показываем красный бейдж. */
+  expiresAt?: string | null;
 }
 
 /** Строка ингредиента в просмотре рецепта: галочка или крестик. */
-export function IngredientViewRow({ ingredient, missing }: IngredientViewRowProps) {
+export function IngredientViewRow({ ingredient, missing, expiresAt = null }: IngredientViewRowProps) {
   const ok = !missing;
 
   return (
@@ -113,6 +116,7 @@ export function IngredientViewRow({ ingredient, missing }: IngredientViewRowProp
               : `есть ${formatAmount(missing.have)} ${missing.unit}`}
         </span>
       ) : null}
+      <ShelfLifeBadge expiresAt={expiresAt} className="w-full md:w-auto" />
     </li>
   );
 }

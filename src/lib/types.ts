@@ -51,6 +51,8 @@ export interface FridgeItem {
   amount: number;
   unit: Unit;
   updatedAt: string | null;
+  /** Дата «годен до» в формате YYYY-MM-DD; null — срок не отслеживается. */
+  expiresAt: string | null;
 }
 
 /** Данные формы блюда (создание и редактирование). */
@@ -67,6 +69,8 @@ export interface FridgeInput {
   name: string;
   amount: number;
   unit: Unit;
+  /** Если не задано — api подставит срок по названию (см. lib/shelfLife.ts). */
+  expiresAt?: string | null;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -99,6 +103,8 @@ export interface Availability {
 export interface CookResult {
   success: boolean;
   missing: MissingIngredient[];
+  /** Названия просроченных ингредиентов, которые всё же были списаны. */
+  expiredWarning?: string[];
 }
 
 /* -------------------------------------------------------------------------- *
@@ -121,6 +127,7 @@ export type FridgeItemRow = {
   amount: number;
   unit: string;
   updated_at: string | null;
+  expires_at: string | null;
 };
 
 export type DishRow = {
@@ -170,6 +177,7 @@ export type FridgeItemInsert = {
   amount: number;
   unit: string;
   updated_at?: string | null;
+  expires_at?: string | null;
 };
 
 export type FridgeItemUpdate = {
@@ -177,6 +185,7 @@ export type FridgeItemUpdate = {
   amount?: number;
   unit?: string;
   updated_at?: string | null;
+  expires_at?: string | null;
 };
 
 export type DishInsert = {

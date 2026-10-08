@@ -14,7 +14,7 @@ import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
  * Toast.tsx — простые уведомления снизу экрана с авто-скрытием.
  * ========================================================================== */
 
-export type ToastKind = 'success' | 'error' | 'info';
+export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastItem {
   id: number;
@@ -31,19 +31,22 @@ const ToastContext = createContext<ToastApi | null>(null);
 const ICONS: Record<ToastKind, typeof Info> = {
   success: CheckCircle2,
   error: AlertTriangle,
-  info: Info
+  info: Info,
+  warning: AlertTriangle
 };
 
 const STYLES: Record<ToastKind, string> = {
   success: 'border-l-olive-500',
   error: 'border-l-berry-500',
-  info: 'border-l-terra-500'
+  info: 'border-l-terra-500',
+  warning: 'border-l-honey-500'
 };
 
 const AUTO_HIDE: Record<ToastKind, number> = {
   success: 3000,
   info: 3000,
-  error: 5000
+  error: 5000,
+  warning: 5000
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

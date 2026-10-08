@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
 /* ============================================================================
  * ui.tsx — маленькие переиспользуемые примитивы (без UI-библиотек).
@@ -60,9 +60,12 @@ export const inputClass = cn(
   'focus:border-terra-400 focus:outline-none focus:ring-4 focus:ring-terra-100'
 );
 
-export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(inputClass, className)} {...rest} />;
-}
+/** forwardRef — чтобы страницы могли вернуть фокус в поле (например, в дату). */
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className, ...rest }, ref) {
+    return <input ref={ref} className={cn(inputClass, className)} {...rest} />;
+  }
+);
 
 export function Select({ className, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={cn(inputClass, 'appearance-none bg-white pr-9', className)} {...rest} />;

@@ -28,6 +28,7 @@ import type {
 } from './types';
 import { isUnit } from './types';
 import { round3 } from './availability';
+import { defaultExpiresAt } from './shelfLife';
 import type { FridgeImportCounts, FridgeImportPlan } from './fridgeImport';
 
 /** Единая точка превращения ошибки Supabase в Error с понятным текстом. */
@@ -53,7 +54,8 @@ function toFridgeItem(row: FridgeItemRow): FridgeItem {
     name: row.name,
     amount: Number(row.amount),
     unit: toUnit(row.unit),
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    expiresAt: row.expires_at ?? null
   };
 }
 
@@ -152,10 +154,17 @@ export async function fetchFridge(): Promise<FridgeItem[]> {
   return (data ?? []).map(toFridgeItem).sort(byName);
 }
 
+/**
+ * Добавляет продукт. Если срок годности не задан явно, он берётся из таблицы
+ * типовых сроков (lib/shelfLife.ts); для «вечных» продуктов остаётся null.
+ */
 export async function addFridgeItem(input: FridgeInput): Promise<FridgeItem> {
+  const name = input.name.trim();
+  const expiresAt = input.expiresAt ?? defaultExpiresAt(name) ?? null;
+
   const { data, error } = await supabase
     .from('fridge_items')
-    .insert({ name: input.name.trim(), amount: round3(input.amount), unit: input.unit })
+    .insert({ name, amount: round3(input.amount), unit: input.unit, expires_at: expiresAt })
     .select('*')
     .single();
 
@@ -167,10 +176,11 @@ export async function updateFridgeItem(
   id: string,
   patch: Partial<FridgeInput>
 ): Promise<FridgeItem> {
-  const payload: { name?: string; amount?: number; unit?: string } = {};
+  const payload: { name?: string; amount?: number; unit?: string; expires_at?: string | null } = {};
   if (patch.name !== undefined) payload.name = patch.name.trim();
   if (patch.amount !== undefined) payload.amount = round3(patch.amount);
   if (patch.unit !== undefined) payload.unit = patch.unit;
+  if (patch.expiresAt !== undefined) payload.expires_at = patch.expiresAt;
 
   const { data, error } = await supabase
     .from('fridge_items')
@@ -212,7 +222,8 @@ export async function applyFridgeImport(plan: FridgeImportPlan): Promise<FridgeI
       plan.inserts.map((item) => ({
         name: item.name.trim(),
         amount: round3(item.amount),
-        unit: item.unit
+        unit: item.unit,
+        expires_at: item.expiresAt ?? defaultExpiresAt(item.name) ?? null
       }))
     );
     if (error) raise('Не удалось добавить продукты', error);
@@ -422,7 +433,8 @@ export async function importBackup(
       fridgeRows.map((row) => ({
         name: row.name.trim(),
         amount: round3(Number(row.amount)),
-        unit: row.unit
+        unit: row.unit,
+        expires_at: typeof row.expires_at === 'string' ? row.expires_at : defaultExpiresAt(row.name) ?? null
       }))
     );
     if (error) raise('Не удалось загрузить холодильник', error);

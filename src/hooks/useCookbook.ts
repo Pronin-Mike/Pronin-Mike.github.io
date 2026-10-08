@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from '../lib/api';
-import { indexFridge } from '../lib/availability';
+import { fridgeKey, indexFridge } from '../lib/availability';
+import { getExpiryStatus } from '../lib/shelfLife';
 import type { CookResult, Dish, FridgeItem, Section } from '../lib/types';
 
 /* ============================================================================
@@ -13,6 +14,10 @@ export interface CookbookData {
   dishes: Dish[];
   fridge: FridgeItem[];
   fridgeIndex: Map<string, FridgeItem>;
+  /** Продукты со статусом 'soon' или 'today', сначала самые срочные. */
+  expiring: FridgeItem[];
+  /** Просроченные продукты, сначала самые старые. */
+  expired: FridgeItem[];
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
@@ -23,6 +28,14 @@ export interface CookbookData {
 
 function toMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+/** Сортировка по сроку: без даты — в конец, внутри — по дате, потом по названию. */
+function byExpiry(a: FridgeItem, b: FridgeItem): number {
+  if (a.expiresAt === b.expiresAt) return a.name.localeCompare(b.name, 'ru');
+  if (!a.expiresAt) return 1;
+  if (!b.expiresAt) return -1;
+  return a.expiresAt.localeCompare(b.expiresAt);
 }
 
 export function useCookbook(): CookbookData {
@@ -63,22 +76,56 @@ export function useCookbook(): CookbookData {
     }
   }, []);
 
+  const fridgeIndexed = useMemo(() => indexFridge(fridge), [fridge]);
+
   const cook = useCallback(
     async (dishId: string) => {
+      // Просроченные ингредиенты блюда ищем до списания: после него их уже нет.
+      const dish = dishes.find((item) => item.id === dishId);
+      const expiredWarning: string[] = [];
+
+      if (dish) {
+        const seen = new Set<string>();
+        for (const ingredient of dish.ingredients) {
+          const product = fridgeIndexed.get(fridgeKey(ingredient.name, ingredient.unit));
+          if (!product || getExpiryStatus(product.expiresAt) !== 'expired') continue;
+          if (seen.has(product.name)) continue;
+          seen.add(product.name);
+          expiredWarning.push(product.name);
+        }
+      }
+
       const result = await api.cookDish(dishId);
       if (result.success) await reloadFridge();
-      return result;
+
+      return expiredWarning.length ? { ...result, expiredWarning } : result;
     },
-    [reloadFridge]
+    [dishes, fridgeIndexed, reloadFridge]
   );
 
-  const fridgeIndex = useMemo(() => indexFridge(fridge), [fridge]);
+  const expiring = useMemo(
+    () =>
+      fridge
+        .filter((item) => {
+          const status = getExpiryStatus(item.expiresAt);
+          return status === 'soon' || status === 'today';
+        })
+        .sort(byExpiry),
+    [fridge]
+  );
+
+  const expired = useMemo(
+    () => fridge.filter((item) => getExpiryStatus(item.expiresAt) === 'expired').sort(byExpiry),
+    [fridge]
+  );
 
   return {
     sections,
     dishes,
     fridge,
-    fridgeIndex,
+    fridgeIndex: fridgeIndexed,
+    expiring,
+    expired,
     loading,
     error,
     reload,

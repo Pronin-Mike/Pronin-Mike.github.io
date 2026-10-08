@@ -11,10 +11,10 @@ import type { FridgeItem } from './types';
  * ========================================================================== */
 
 const fridge: FridgeItem[] = [
-  { id: 'p1', name: 'хлеб', amount: 500, unit: 'г', updatedAt: null },
-  { id: 'p2', name: 'молоко', amount: 1000, unit: 'мл', updatedAt: null },
-  { id: 'p3', name: 'огурцы', amount: 300, unit: 'г', updatedAt: null },
-  { id: 'p4', name: 'орехи', amount: 100, unit: 'г', updatedAt: null }
+  { id: 'p1', name: 'хлеб', amount: 500, unit: 'г', updatedAt: null, expiresAt: null },
+  { id: 'p2', name: 'молоко', amount: 1000, unit: 'мл', updatedAt: null, expiresAt: null },
+  { id: 'p3', name: 'огурцы', amount: 300, unit: 'г', updatedAt: null, expiresAt: null },
+  { id: 'p4', name: 'орехи', amount: 100, unit: 'г', updatedAt: null, expiresAt: null }
 ];
 
 describe('buildIngredientSuggestions', () => {
@@ -29,8 +29,8 @@ describe('buildIngredientSuggestions', () => {
 
   it('одно название с разными единицами даёт две подсказки', () => {
     const result = buildIngredientSuggestions([
-      { id: 'a', name: 'масло', amount: 200, unit: 'мл', updatedAt: null },
-      { id: 'b', name: 'Масло', amount: 100, unit: 'г', updatedAt: null }
+      { id: 'a', name: 'масло', amount: 200, unit: 'мл', updatedAt: null, expiresAt: null },
+      { id: 'b', name: 'Масло', amount: 100, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
     expect(result).toEqual([
       { name: 'масло', unit: 'мл' },
@@ -40,9 +40,9 @@ describe('buildIngredientSuggestions', () => {
 
   it('убирает повторы и пустые названия', () => {
     const result = buildIngredientSuggestions([
-      { id: 'a', name: 'соль', amount: 100, unit: 'г', updatedAt: null },
-      { id: 'b', name: ' Соль ', amount: 200, unit: 'г', updatedAt: null },
-      { id: 'c', name: '   ', amount: 1, unit: 'г', updatedAt: null }
+      { id: 'a', name: 'соль', amount: 100, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'b', name: ' Соль ', amount: 200, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'c', name: '   ', amount: 1, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
     expect(result).toEqual([{ name: 'соль', unit: 'г' }]);
   });
@@ -85,7 +85,8 @@ describe('filterIngredientSuggestions', () => {
       name: `продукт ${index}`,
       amount: 1,
       unit: 'г' as const,
-      updatedAt: null
+      updatedAt: null,
+      expiresAt: null
     }));
     const list = buildIngredientSuggestions(many);
     expect(filterIngredientSuggestions(list, 'п')).toHaveLength(8);
@@ -110,8 +111,8 @@ describe('shouldShowSuggestions', () => {
 
   it('остаётся открытым, если у названия несколько единиц измерения', () => {
     const both = buildIngredientSuggestions([
-      { id: 'a', name: 'масло', amount: 200, unit: 'мл', updatedAt: null },
-      { id: 'b', name: 'масло', amount: 100, unit: 'г', updatedAt: null }
+      { id: 'a', name: 'масло', amount: 200, unit: 'мл', updatedAt: null, expiresAt: null },
+      { id: 'b', name: 'масло', amount: 100, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
     expect(shouldShowSuggestions(both, 'масло')).toBe(true);
   });
