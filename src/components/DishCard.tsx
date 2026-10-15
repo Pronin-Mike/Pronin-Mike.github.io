@@ -4,6 +4,7 @@ import type { Availability, Dish, FridgeItem } from '../lib/types';
 import { fridgeKey } from '../lib/availability';
 import { formatAmount, formatTime, sectionEmoji } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
+import type { DishExpiryStatus } from '../lib/dishExpiry';
 import { Button, cn } from './ui';
 
 /* ============================================================================
@@ -16,6 +17,8 @@ export interface DishCardProps {
   availability: Availability;
   /** Холодильник для проверки сроков годности (по ключу «название|единица»). */
   fridgeIndex?: Map<string, FridgeItem>;
+  /** Статус сроков ингредиентов, влияющий на обводку карточки. */
+  expiryStatus?: DishExpiryStatus;
   cooking?: boolean;
   onCook: (dish: Dish) => void;
 }
@@ -24,6 +27,7 @@ export default function DishCard({
   dish,
   availability,
   fridgeIndex,
+  expiryStatus = 'none',
   cooking = false,
   onCook
 }: DishCardProps) {
@@ -48,7 +52,16 @@ export default function DishCard({
     <article
       className={cn(
         'flex h-full flex-col overflow-hidden rounded-2xl border shadow-soft transition',
-        available ? 'border-cream-300 bg-white hover:-translate-y-0.5 hover:shadow-lift' : 'border-cream-400 bg-cream-200'
+        available ? 'bg-white hover:-translate-y-0.5 hover:shadow-lift' : 'bg-cream-200',
+        expiryStatus === 'expired'
+          ? 'border-2 border-berry-500'
+          : expiryStatus === 'today'
+            ? 'border-2 border-terra-500'
+            : expiryStatus === 'soon'
+              ? 'border-2 border-honey-400'
+              : available
+                ? 'border-cream-300'
+                : 'border-cream-400'
       )}
     >
       <div className={cn('flex flex-1 flex-col gap-3 p-4', !available && 'opacity-50')}>

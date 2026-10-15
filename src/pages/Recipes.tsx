@@ -11,6 +11,7 @@ import { useCookbook } from '../hooks/useCookbook';
 import { checkDish, fridgeKey, missingText } from '../lib/availability';
 import { sectionEmoji } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
+import { dishExpirySortRank, getDishExpiryStatus } from '../lib/dishExpiry';
 import type { Dish, FridgeItem } from '../lib/types';
 
 /* ============================================================================
@@ -56,7 +57,11 @@ export default function Recipes() {
   );
 
   const decorated = useMemo(
-    () => dishes.map((dish) => ({ dish, availability: checkDish(dish, fridgeIndex) })),
+    () => dishes.map((dish) => ({
+      dish,
+      availability: checkDish(dish, fridgeIndex),
+      expiryStatus: getDishExpiryStatus(dish, fridgeIndex)
+    })),
     [dishes, fridgeIndex]
   );
 
@@ -82,6 +87,8 @@ export default function Recipes() {
     }
 
     return [...list].sort((a, b) => {
+      const expiryDiff = dishExpirySortRank(a.expiryStatus) - dishExpirySortRank(b.expiryStatus);
+      if (expiryDiff !== 0) return expiryDiff;
       if (a.availability.available !== b.availability.available) {
         return a.availability.available ? -1 : 1;
       }
@@ -251,6 +258,7 @@ export default function Recipes() {
               dish={item.dish}
               availability={item.availability}
               fridgeIndex={fridgeIndex}
+              expiryStatus={item.expiryStatus}
               cooking={cookingId === item.dish.id}
               onCook={(dish) => void handleCook(dish)}
             />
