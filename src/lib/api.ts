@@ -44,6 +44,22 @@ function raise(context: string, error: { message?: string } | null): never {
   throw new Error(error?.message ? `${context}: ${error.message}` : context);
 }
 
+function raiseReceipt(context: string, error: { message?: string; code?: string } | null): never {
+  const message = error?.message?.toLocaleLowerCase('ru') ?? '';
+  if (
+    error?.code === 'PGRST202'
+    || error?.code === '42P01'
+    || error?.code === '42883'
+    || message.includes('import_receipt')
+    || message.includes('product_aliases')
+    || message.includes('receipt_items')
+    || message.includes('receipts')
+  ) {
+    throw new Error('Хранилище чеков не настроено. Выполните sql/receipt-scanner.sql в Supabase SQL Editor и обновите страницу.');
+  }
+  raise(context, error);
+}
+
 export function toUnit(value: unknown): Unit {
   return isUnit(value) ? value : 'г';
 }
@@ -283,7 +299,7 @@ function toReceiptItem(row: ReceiptItemRow): ReceiptItem {
 
 export async function fetchProductAliases(): Promise<ProductAlias[]> {
   const { data, error } = await supabase.from('product_aliases').select('*');
-  if (error) raise('Не удалось загрузить соответствия продуктов', error);
+  if (error) raiseReceipt('Не удалось загрузить соответствия продуктов', error);
   return (data ?? []).map((row: ProductAliasRow) => ({
     id: row.id,
     store: row.store,
@@ -317,7 +333,7 @@ export async function createReceiptDraft(input: ReceiptDraftInput): Promise<Rece
       .eq('user_id', userResult.user.id)
       .eq('receipt_key', input.receiptKey)
       .maybeSingle();
-    if (duplicate.error) raise('Не удалось проверить повторный чек', duplicate.error);
+    if (duplicate.error) raiseReceipt('Не удалось проверить повторный чек', duplicate.error);
     if (duplicate.data) throw new Error('Этот чек уже сохранён. Откройте его в истории чеков.');
   }
 
@@ -333,7 +349,7 @@ export async function createReceiptDraft(input: ReceiptDraftInput): Promise<Rece
     receipt_key: input.receiptKey,
     status: 'draft'
   }).select('*').single();
-  if (inserted.error || !inserted.data) raise('Не удалось сохранить черновик чека', inserted.error);
+  if (inserted.error || !inserted.data) raiseReceipt('Не удалось сохранить черновик чека', inserted.error);
 
   const receipt = toReceipt(inserted.data);
   const rows = input.items.map((item) => ({
@@ -353,7 +369,7 @@ export async function createReceiptDraft(input: ReceiptDraftInput): Promise<Rece
   const itemsResult = await supabase.from('receipt_items').insert(rows);
   if (itemsResult.error) {
     await supabase.from('receipts').delete().eq('id', receipt.id).eq('status', 'draft');
-    raise('Не удалось сохранить позиции чека', itemsResult.error);
+    raiseReceipt('Не удалось сохранить позиции чека', itemsResult.error);
   }
   return receipt;
 }
@@ -389,14 +405,14 @@ export async function importReceipt(receiptId: string, items: ReceiptItem[], sto
     p_items: payload,
     p_aliases: aliases
   });
-  if (error) raise('Не удалось импортировать чек', error);
+  if (error) raiseReceipt('Не удалось импортировать чек', error);
 }
 
 export async function fetchReceipts(): Promise<Receipt[]> {
   const receipts = await supabase.from('receipts').select('*').order('created_at', { ascending: false });
-  if (receipts.error) raise('Не удалось загрузить историю чеков', receipts.error);
+  if (receipts.error) raiseReceipt('Не удалось загрузить историю чеков', receipts.error);
   const itemRows = await supabase.from('receipt_items').select('receipt_id');
-  if (itemRows.error) raise('Не удалось загрузить позиции чеков', itemRows.error);
+  if (itemRows.error) raiseReceipt('Не удалось загрузить позиции чеков', itemRows.error);
   const counts = new Map<string, number>();
   for (const row of itemRows.data ?? []) counts.set(row.receipt_id, (counts.get(row.receipt_id) ?? 0) + 1);
   return (receipts.data ?? []).map((row: ReceiptRow) => ({ ...toReceipt(row), itemCount: counts.get(row.id) ?? 0 }));
@@ -408,13 +424,13 @@ export async function fetchReceiptItems(receiptId: string): Promise<ReceiptItem[
     .select('*')
     .eq('receipt_id', receiptId)
     .order('line_number', { ascending: true });
-  if (error) raise('Не удалось загрузить позиции чека', error);
+  if (error) raiseReceipt('Не удалось загрузить позиции чека', error);
   return (data ?? []).map((row: ReceiptItemRow) => toReceiptItem(row));
 }
 
 export async function deleteReceiptDraft(receiptId: string): Promise<void> {
   const { error } = await supabase.from('receipts').delete().eq('id', receiptId).eq('status', 'draft');
-  if (error) raise('Не удалось удалить черновик чека', error);
+  if (error) raiseReceipt('Не удалось удалить черновик чека', error);
 }
 
 /* -------------------------------------------------------------------------- *

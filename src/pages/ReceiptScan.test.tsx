@@ -107,6 +107,20 @@ describe('экран сканирования чека', () => {
     expect(await screen.findByText(/Чек импортирован/)).toBeTruthy();
   });
 
+  it('считает импорт успешным, даже если последующее обновление списка не загрузилось', async () => {
+    vi.mocked(api.fetchFridge)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('Список временно недоступен'));
+    renderPage();
+    await parseText();
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить выбранное в холодильник' }));
+
+    await waitFor(() => expect(api.importReceipt).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Чек импортирован/)).toBeTruthy();
+    expect(await screen.findByText(/Продукты добавлены, но список не обновился/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Добавить выбранное в холодильник' })).toBeNull();
+  });
+
   it('показывает предупреждение о повторном чеке', async () => {
     vi.mocked(api.createReceiptDraft).mockRejectedValue(new Error('Этот чек уже сохранён. Откройте его в истории чеков.'));
     renderPage();

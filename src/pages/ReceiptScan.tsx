@@ -35,6 +35,8 @@ export default function ReceiptScan() {
   const [historyReceipt, setHistoryReceipt] = useState<Receipt | null>(null);
   const [progress, setProgress] = useState<RecognitionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [source, setSource] = useState<ReceiptSource>('text');
   const [pdfWithoutText, setPdfWithoutText] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,13 +45,16 @@ export default function ReceiptScan() {
   const reloadHistory = async () => setHistory(await api.fetchReceipts());
 
   useEffect(() => {
-    void Promise.all([api.fetchFridge(), api.fetchProductAliases(), api.fetchReceipts()])
-      .then(([nextFridge, nextAliases, nextHistory]) => {
-        setFridge(nextFridge);
+    void api.fetchFridge()
+      .then(setFridge)
+      .catch((caught) => setError(errorMessage(caught)));
+    void Promise.all([api.fetchProductAliases(), api.fetchReceipts()])
+      .then(([nextAliases, nextHistory]) => {
         setAliases(nextAliases);
         setHistory(nextHistory);
+        setStorageError(null);
       })
-      .catch((caught) => setError(errorMessage(caught)));
+      .catch((caught) => setStorageError(errorMessage(caught)));
   }, []);
 
   const importPlan = useMemo(() => {
@@ -72,6 +77,7 @@ export default function ReceiptScan() {
     setSource(nextSource);
     setDraftId(null);
     setError(null);
+    setImportError(null);
   };
 
   const handleFile = async (file: File, nextSource: ReceiptSource) => {
@@ -141,6 +147,10 @@ export default function ReceiptScan() {
     && items.filter((item) => item.includeInFridge).every((item) =>
       item.normalizedName.trim() && item.fridgeAmount !== null && item.fridgeAmount > 0 && item.fridgeUnit !== null
     );
+  const invalidSelectedCount = items.filter((item) =>
+    item.includeInFridge
+    && (!item.normalizedName.trim() || item.fridgeAmount === null || item.fridgeAmount <= 0 || item.fridgeUnit === null)
+  ).length;
 
   const possibleDuplicate = useMemo(() => {
     if (!parsed || receiptKey(parsed) || parsed.totalAmount === null || !parsed.purchasedAt) return null;
@@ -155,7 +165,7 @@ export default function ReceiptScan() {
   const handleImport = async () => {
     if (!parsed || !canImport) return;
     setBusy(true);
-    setError(null);
+    setImportError(null);
     try {
       let receiptId = draftId;
       if (!receiptId) {
@@ -175,14 +185,21 @@ export default function ReceiptScan() {
       }
       await api.importReceipt(receiptId, items, store);
       toast.show(`Чек импортирован: ${items.filter((item) => item.includeInFridge).length} позиций.`, 'success');
-      setFridge(await api.fetchFridge());
-      await reloadHistory();
       setParsed(null);
       setItems([]);
       setRawText('');
       setDraftId(null);
+
+      const [fridgeResult, historyResult] = await Promise.allSettled([api.fetchFridge(), api.fetchReceipts()]);
+      if (fridgeResult.status === 'fulfilled') setFridge(fridgeResult.value);
+      if (historyResult.status === 'fulfilled') setHistory(historyResult.value);
+      if (fridgeResult.status === 'rejected' || historyResult.status === 'rejected') {
+        toast.show('Продукты добавлены, но список не обновился. Перезагрузите страницу.', 'info');
+      }
     } catch (caught) {
-      setError(errorMessage(caught));
+      const message = errorMessage(caught);
+      setImportError(message);
+      toast.show(message, 'error');
       await reloadHistory().catch(() => undefined);
     } finally {
       setBusy(false);
@@ -279,7 +296,14 @@ export default function ReceiptScan() {
             <p className="font-semibold text-ink">Будет обработано: {items.filter((item) => item.includeInFridge).length}</p>
             <p className="mt-1 text-ink-soft">Новых: {importPlan.counts.added}; количество увеличится: {importPlan.counts.summed}; пропущено: {importPlan.counts.skipped}. Срок годности будет ориентировочным по существующим правилам.</p>
           </div>
-          <Button className="w-full" disabled={busy || !canImport} onClick={() => void handleImport()}>{busy ? 'Сохраняем…' : 'Добавить выбранное в холодильник'}</Button>
+          {storageError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{storageError}</div>}
+          {!storageError && invalidSelectedCount > 0 && (
+            <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+              Нельзя добавить: у {invalidSelectedCount} выбранных позиций не заполнены название, количество или единица. Заполните поля либо снимите флажок у этих позиций.
+            </p>
+          )}
+          {importError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{importError}</div>}
+          <Button className="w-full" disabled={busy || !canImport || storageError !== null} onClick={() => void handleImport()}>{busy ? 'Сохраняем…' : 'Добавить выбранное в холодильник'}</Button>
         </Card>
       )}
 
