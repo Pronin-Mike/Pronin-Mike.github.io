@@ -30,9 +30,24 @@ alter table public.receipts
   add constraint receipts_status_check
   check (status in ('draft', 'imported')) not valid;
 
+-- В приложении магазин хранится как отображаемое русское название. Старые
+-- версии схемы ожидали технические slug-значения и блокировали создание чека.
+alter table public.receipts drop constraint if exists receipts_store_check;
+alter table public.receipts
+  add constraint receipts_store_check
+  check (
+    store is null or store in (
+      'Пятёрочка', 'В1', 'Перекрёсток', 'ДА!', 'Другой магазин',
+      'pyaterochka', 'v1', 'perekrestok', 'da', 'other'
+    )
+  ) not valid;
+
 create unique index if not exists receipts_user_key_unique
   on public.receipts(user_id, receipt_key)
   where receipt_key is not null;
+
+-- Имя из ранней версии схемы описывало тот же индекс.
+drop index if exists public.idx_receipts_user_key;
 
 create table if not exists public.receipt_items (
   id uuid primary key default gen_random_uuid(),
@@ -56,6 +71,14 @@ alter table public.receipt_items
   add constraint receipt_items_fridge_unit_check
   check (fridge_unit is null or fridge_unit in ('г', 'мл', 'шт')) not valid;
 
+alter table public.receipt_items drop constraint if exists receipt_items_match_status_check;
+alter table public.receipt_items
+  add constraint receipt_items_match_status_check
+  check (match_status in (
+    'unmatched', 'alias', 'fridge', 'normalized', 'manual',
+    'suggested', 'confirmed'
+  )) not valid;
+
 create table if not exists public.product_aliases (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -73,6 +96,16 @@ alter table public.product_aliases
   add constraint product_aliases_package_unit_check
   check (package_unit is null or package_unit in ('г', 'мл', 'шт')) not valid;
 
+alter table public.product_aliases drop constraint if exists product_aliases_store_check;
+alter table public.product_aliases
+  add constraint product_aliases_store_check
+  check (
+    store is null or store in (
+      'Пятёрочка', 'В1', 'Перекрёсток', 'ДА!', 'Другой магазин',
+      'pyaterochka', 'v1', 'perekrestok', 'da', 'other'
+    )
+  ) not valid;
+
 create unique index if not exists product_aliases_user_store_name_unique
   on public.product_aliases(user_id, coalesce(store, ''), raw_name_key);
 
@@ -81,28 +114,40 @@ alter table public.receipt_items enable row level security;
 alter table public.product_aliases enable row level security;
 
 drop policy if exists "receipts_own" on public.receipts;
+drop policy if exists "receipts_select_own" on public.receipts;
+drop policy if exists "receipts_insert_own" on public.receipts;
+drop policy if exists "receipts_update_own" on public.receipts;
+drop policy if exists "receipts_delete_own" on public.receipts;
 create policy "receipts_own" on public.receipts
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
 
 drop policy if exists "receipt_items_own" on public.receipt_items;
+drop policy if exists "receipt_items_select_own" on public.receipt_items;
+drop policy if exists "receipt_items_insert_own" on public.receipt_items;
+drop policy if exists "receipt_items_update_own" on public.receipt_items;
+drop policy if exists "receipt_items_delete_own" on public.receipt_items;
 create policy "receipt_items_own" on public.receipt_items
   for all to authenticated
   using (exists (
     select 1 from public.receipts r
-    where r.id = receipt_id and r.user_id = auth.uid()
+    where r.id = receipt_id and r.user_id = (select auth.uid())
   ))
   with check (exists (
     select 1 from public.receipts r
-    where r.id = receipt_id and r.user_id = auth.uid()
+    where r.id = receipt_id and r.user_id = (select auth.uid())
   ));
 
 drop policy if exists "product_aliases_own" on public.product_aliases;
+drop policy if exists "product_aliases_select_own" on public.product_aliases;
+drop policy if exists "product_aliases_insert_own" on public.product_aliases;
+drop policy if exists "product_aliases_update_own" on public.product_aliases;
+drop policy if exists "product_aliases_delete_own" on public.product_aliases;
 create policy "product_aliases_own" on public.product_aliases
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
 
 grant select, insert, update, delete on public.receipts to authenticated;
 grant select, insert, update, delete on public.receipt_items to authenticated;
@@ -273,6 +318,26 @@ select
       and c.conname = 'receipts_source_check'
       and pg_get_constraintdef(c.oid) like '%upload%'
   ) as source_constraint_ready,
+  exists (
+    select 1
+    from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'receipts'
+      and c.conname = 'receipts_store_check'
+      and pg_get_constraintdef(c.oid) like '%Пятёрочка%'
+  ) as store_constraint_ready,
+  exists (
+    select 1
+    from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'receipt_items'
+      and c.conname = 'receipt_items_match_status_check'
+      and pg_get_constraintdef(c.oid) like '%manual%'
+  ) as match_status_constraint_ready,
   (
     to_regclass('public.receipts') is not null
     and to_regclass('public.receipt_items') is not null
@@ -287,5 +352,25 @@ select
         and t.relname = 'receipts'
         and c.conname = 'receipts_source_check'
         and pg_get_constraintdef(c.oid) like '%upload%'
+    )
+    and exists (
+      select 1
+      from pg_constraint c
+      join pg_class t on t.oid = c.conrelid
+      join pg_namespace n on n.oid = t.relnamespace
+      where n.nspname = 'public'
+        and t.relname = 'receipts'
+        and c.conname = 'receipts_store_check'
+        and pg_get_constraintdef(c.oid) like '%Пятёрочка%'
+    )
+    and exists (
+      select 1
+      from pg_constraint c
+      join pg_class t on t.oid = c.conrelid
+      join pg_namespace n on n.oid = t.relnamespace
+      where n.nspname = 'public'
+        and t.relname = 'receipt_items'
+        and c.conname = 'receipt_items_match_status_check'
+        and pg_get_constraintdef(c.oid) like '%manual%'
     )
   ) as ready;
