@@ -11,6 +11,7 @@ import Fridge from './pages/Fridge';
 import Import from './pages/Import';
 import Login from './pages/Login';
 import Recipes from './pages/Recipes';
+import ReceiptScan from './pages/ReceiptScan';
 import Settings from './pages/Settings';
 
 /* ============================================================================
@@ -61,6 +62,7 @@ export default function App() {
               <Route element={<Layout />}>
                 <Route path="/" element={<Recipes />} />
                 <Route path="/fridge" element={<Fridge />} />
+                <Route path="/receipts" element={<ReceiptScan />} />
                 <Route path="/dish/new" element={<DishEdit />} />
                 <Route path="/dish/:dishId/edit" element={<DishEdit />} />
                 <Route path="/import" element={<Import />} />

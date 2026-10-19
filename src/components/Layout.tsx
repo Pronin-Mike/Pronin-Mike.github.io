@@ -6,6 +6,7 @@ import {
   LogOut,
   PlusCircle,
   Refrigerator,
+  ScanLine,
   Settings as SettingsIcon,
   SlidersHorizontal
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import { Button, cn } from './ui';
 const NAV_ITEMS = [
   { to: '/', label: 'Рецепты', icon: BookOpen, end: true },
   { to: '/fridge', label: 'Холодильник', icon: Refrigerator, end: false },
+  { to: '/receipts', label: 'Чек', icon: ScanLine, end: false },
   { to: '/dish/new', label: 'Добавить', icon: PlusCircle, end: false },
   { to: '/import', label: 'Импорт', icon: Import, end: false },
   { to: '/settings', label: 'Настройки', icon: SettingsIcon, end: false }

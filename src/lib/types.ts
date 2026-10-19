@@ -74,6 +74,55 @@ export interface FridgeInput {
 }
 
 /* -------------------------------------------------------------------------- *
+ * Кассовые чеки
+ * -------------------------------------------------------------------------- */
+
+export type ReceiptSource = 'camera' | 'upload' | 'pdf' | 'text';
+export type ReceiptStatus = 'draft' | 'imported';
+export type ReceiptMatchStatus = 'alias' | 'fridge' | 'normalized' | 'manual' | 'unmatched';
+
+export interface Receipt {
+  id: string;
+  store: string | null;
+  source: ReceiptSource;
+  purchasedAt: string | null;
+  totalAmount: number | null;
+  fiscalFn: string | null;
+  fiscalFd: string | null;
+  fiscalFp: string | null;
+  receiptKey: string | null;
+  status: ReceiptStatus;
+  importedAt: string | null;
+  createdAt: string;
+  itemCount?: number;
+}
+
+export interface ReceiptItem {
+  id?: string;
+  lineNumber: number;
+  rawName: string;
+  normalizedName: string;
+  receiptQuantity: number | null;
+  receiptUnit: string | null;
+  fridgeAmount: number | null;
+  fridgeUnit: Unit | null;
+  unitPrice: number | null;
+  totalPrice: number | null;
+  includeInFridge: boolean;
+  matchStatus: ReceiptMatchStatus;
+  needsReview: boolean;
+}
+
+export interface ProductAlias {
+  id: string;
+  store: string | null;
+  rawNameKey: string;
+  productName: string;
+  packageAmount: number | null;
+  packageUnit: Unit | null;
+}
+
+/* -------------------------------------------------------------------------- *
  * Доступность блюда
  * -------------------------------------------------------------------------- */
 
@@ -154,6 +203,51 @@ export type CookLogRow = {
   id: string;
   dish_id: string | null;
   cooked_at: string | null;
+};
+
+export type ReceiptRow = {
+  id: string;
+  user_id: string;
+  store: string | null;
+  source: string;
+  purchased_at: string | null;
+  total_amount: number | null;
+  fiscal_fn: string | null;
+  fiscal_fd: string | null;
+  fiscal_fp: string | null;
+  receipt_key: string | null;
+  status: string;
+  imported_at: string | null;
+  created_at: string;
+};
+
+export type ReceiptItemRow = {
+  id: string;
+  receipt_id: string;
+  line_number: number;
+  raw_name: string;
+  normalized_name: string;
+  receipt_quantity: number | null;
+  receipt_unit: string | null;
+  fridge_amount: number | null;
+  fridge_unit: string | null;
+  unit_price: number | null;
+  total_price: number | null;
+  include_in_fridge: boolean;
+  match_status: string;
+  created_at: string;
+};
+
+export type ProductAliasRow = {
+  id: string;
+  user_id: string;
+  store: string | null;
+  raw_name_key: string;
+  product_name: string;
+  package_amount: number | null;
+  package_unit: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 /** Строка view dishes_full: ингредиенты приходят jsonb-агрегатом. */
@@ -255,6 +349,9 @@ export type Database = {
         { id?: string; dish_id?: string | null; cooked_at?: string | null },
         { dish_id?: string | null; cooked_at?: string | null }
       >;
+      receipts: TableDefinition<ReceiptRow, Partial<ReceiptRow> & Pick<ReceiptRow, 'user_id' | 'source' | 'status'>, Partial<ReceiptRow>>;
+      receipt_items: TableDefinition<ReceiptItemRow, Omit<ReceiptItemRow, 'id' | 'created_at'>, Partial<ReceiptItemRow>>;
+      product_aliases: TableDefinition<ProductAliasRow, Omit<ProductAliasRow, 'id' | 'created_at' | 'updated_at'>, Partial<ProductAliasRow>>;
     };
     Views: {
       dishes_full: ViewDefinition<DishFullRow>;
@@ -262,6 +359,10 @@ export type Database = {
     Functions: {
       cook_dish: {
         Args: { p_dish_id: string };
+        Returns: unknown;
+      };
+      import_receipt: {
+        Args: { p_receipt_id: string; p_items: unknown; p_aliases: unknown };
         Returns: unknown;
       };
     };

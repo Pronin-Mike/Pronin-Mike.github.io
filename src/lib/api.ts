@@ -24,9 +24,17 @@ import type {
   MissingIngredient,
   Section,
   SectionRow,
-  Unit
+  Unit,
+  ProductAlias,
+  ProductAliasRow,
+  Receipt,
+  ReceiptItem,
+  ReceiptItemRow,
+  ReceiptRow,
+  ReceiptSource
 } from './types';
 import { isUnit } from './types';
+import { receiptNameKey } from './receiptParser';
 import { round3 } from './availability';
 import { defaultExpiresAt } from './shelfLife';
 import type { FridgeImportCounts, FridgeImportPlan } from './fridgeImport';
@@ -230,6 +238,183 @@ export async function applyFridgeImport(plan: FridgeImportPlan): Promise<FridgeI
   }
 
   return plan.counts;
+}
+
+/* -------------------------------------------------------------------------- *
+ * Чеки
+ * -------------------------------------------------------------------------- */
+
+function toReceipt(row: ReceiptRow): Receipt {
+  return {
+    id: row.id,
+    store: row.store,
+    source: ['camera', 'upload', 'pdf', 'text'].includes(row.source) ? row.source as ReceiptSource : 'text',
+    purchasedAt: row.purchased_at,
+    totalAmount: row.total_amount,
+    fiscalFn: row.fiscal_fn,
+    fiscalFd: row.fiscal_fd,
+    fiscalFp: row.fiscal_fp,
+    receiptKey: row.receipt_key,
+    status: row.status === 'imported' ? 'imported' : 'draft',
+    importedAt: row.imported_at,
+    createdAt: row.created_at
+  };
+}
+
+function toReceiptItem(row: ReceiptItemRow): ReceiptItem {
+  return {
+    id: row.id,
+    lineNumber: row.line_number,
+    rawName: row.raw_name,
+    normalizedName: row.normalized_name,
+    receiptQuantity: row.receipt_quantity,
+    receiptUnit: row.receipt_unit,
+    fridgeAmount: row.fridge_amount,
+    fridgeUnit: isUnit(row.fridge_unit) ? row.fridge_unit : null,
+    unitPrice: row.unit_price,
+    totalPrice: row.total_price,
+    includeInFridge: row.include_in_fridge,
+    matchStatus: ['alias', 'fridge', 'normalized', 'manual'].includes(row.match_status)
+      ? row.match_status as ReceiptItem['matchStatus']
+      : 'unmatched',
+    needsReview: !row.fridge_amount || !isUnit(row.fridge_unit) || row.match_status === 'unmatched'
+  };
+}
+
+export async function fetchProductAliases(): Promise<ProductAlias[]> {
+  const { data, error } = await supabase.from('product_aliases').select('*');
+  if (error) raise('Не удалось загрузить соответствия продуктов', error);
+  return (data ?? []).map((row: ProductAliasRow) => ({
+    id: row.id,
+    store: row.store,
+    rawNameKey: row.raw_name_key,
+    productName: row.product_name,
+    packageAmount: row.package_amount,
+    packageUnit: isUnit(row.package_unit) ? row.package_unit : null
+  }));
+}
+
+export interface ReceiptDraftInput {
+  store: string | null;
+  source: ReceiptSource;
+  purchasedAt: string | null;
+  totalAmount: number | null;
+  fiscalFn: string | null;
+  fiscalFd: string | null;
+  fiscalFp: string | null;
+  receiptKey: string | null;
+  items: ReceiptItem[];
+}
+
+export async function createReceiptDraft(input: ReceiptDraftInput): Promise<Receipt> {
+  const { data: userResult, error: userError } = await supabase.auth.getUser();
+  if (userError || !userResult.user) throw new Error('Для сохранения чека нужно войти в приложение');
+
+  if (input.receiptKey) {
+    const duplicate = await supabase
+      .from('receipts')
+      .select('id, status')
+      .eq('user_id', userResult.user.id)
+      .eq('receipt_key', input.receiptKey)
+      .maybeSingle();
+    if (duplicate.error) raise('Не удалось проверить повторный чек', duplicate.error);
+    if (duplicate.data) throw new Error('Этот чек уже сохранён. Откройте его в истории чеков.');
+  }
+
+  const inserted = await supabase.from('receipts').insert({
+    user_id: userResult.user.id,
+    store: input.store,
+    source: input.source,
+    purchased_at: input.purchasedAt,
+    total_amount: input.totalAmount,
+    fiscal_fn: input.fiscalFn,
+    fiscal_fd: input.fiscalFd,
+    fiscal_fp: input.fiscalFp,
+    receipt_key: input.receiptKey,
+    status: 'draft'
+  }).select('*').single();
+  if (inserted.error || !inserted.data) raise('Не удалось сохранить черновик чека', inserted.error);
+
+  const receipt = toReceipt(inserted.data);
+  const rows = input.items.map((item) => ({
+    receipt_id: receipt.id,
+    line_number: item.lineNumber,
+    raw_name: item.rawName,
+    normalized_name: item.normalizedName,
+    receipt_quantity: item.receiptQuantity,
+    receipt_unit: item.receiptUnit,
+    fridge_amount: item.fridgeAmount,
+    fridge_unit: item.fridgeUnit,
+    unit_price: item.unitPrice,
+    total_price: item.totalPrice,
+    include_in_fridge: item.includeInFridge,
+    match_status: item.matchStatus
+  }));
+  const itemsResult = await supabase.from('receipt_items').insert(rows);
+  if (itemsResult.error) {
+    await supabase.from('receipts').delete().eq('id', receipt.id).eq('status', 'draft');
+    raise('Не удалось сохранить позиции чека', itemsResult.error);
+  }
+  return receipt;
+}
+
+export async function importReceipt(receiptId: string, items: ReceiptItem[], store: string | null): Promise<void> {
+  const aliases = items
+    .filter((item) => item.includeInFridge && item.matchStatus === 'manual')
+    .map((item) => ({
+      store,
+      raw_name_key: receiptNameKey(item.rawName),
+      product_name: item.normalizedName.trim(),
+      package_amount: item.fridgeAmount && item.receiptQuantity && item.receiptQuantity > 0
+        ? item.fridgeAmount / item.receiptQuantity
+        : item.fridgeAmount,
+      package_unit: item.fridgeUnit
+    }));
+  const payload = items.map((item) => ({
+    line_number: item.lineNumber,
+    raw_name: item.rawName,
+    normalized_name: item.normalizedName.trim(),
+    receipt_quantity: item.receiptQuantity,
+    receipt_unit: item.receiptUnit,
+    fridge_amount: item.fridgeAmount,
+    fridge_unit: item.fridgeUnit,
+    unit_price: item.unitPrice,
+    total_price: item.totalPrice,
+    include_in_fridge: item.includeInFridge,
+    match_status: item.matchStatus,
+    expires_at: item.includeInFridge ? defaultExpiresAt(item.normalizedName) : null
+  }));
+  const { error } = await supabase.rpc('import_receipt', {
+    p_receipt_id: receiptId,
+    p_items: payload,
+    p_aliases: aliases
+  });
+  if (error) raise('Не удалось импортировать чек', error);
+}
+
+export async function fetchReceipts(): Promise<Receipt[]> {
+  const receipts = await supabase.from('receipts').select('*').order('created_at', { ascending: false });
+  if (receipts.error) raise('Не удалось загрузить историю чеков', receipts.error);
+  const itemRows = await supabase.from('receipt_items').select('receipt_id');
+  if (itemRows.error) raise('Не удалось загрузить позиции чеков', itemRows.error);
+  const counts = new Map<string, number>();
+  for (const row of itemRows.data ?? []) counts.set(row.receipt_id, (counts.get(row.receipt_id) ?? 0) + 1);
+  return (receipts.data ?? []).map((row: ReceiptRow) => ({ ...toReceipt(row), itemCount: counts.get(row.id) ?? 0 }));
+}
+
+export async function fetchReceiptItems(receiptId: string): Promise<ReceiptItem[]> {
+  const { data, error } = await supabase
+    .from('receipt_items')
+    .select('*')
+    .eq('receipt_id', receiptId)
+    .order('line_number', { ascending: true });
+  if (error) raise('Не удалось загрузить позиции чека', error);
+  return (data ?? []).map((row: ReceiptItemRow) => toReceiptItem(row));
+}
+
+export async function deleteReceiptDraft(receiptId: string): Promise<void> {
+  const { error } = await supabase.from('receipts').delete().eq('id', receiptId).eq('status', 'draft');
+  if (error) raise('Не удалось удалить черновик чека', error);
 }
 
 /* -------------------------------------------------------------------------- *
