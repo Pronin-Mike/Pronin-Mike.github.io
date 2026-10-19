@@ -46,6 +46,9 @@ function raise(context: string, error: { message?: string } | null): never {
 
 function raiseReceipt(context: string, error: { message?: string; code?: string } | null): never {
   const message = error?.message?.toLocaleLowerCase('ru') ?? '';
+  if (error?.code === '23514') {
+    throw new Error(`Схема чеков несовместима с приложением. Повторно выполните актуальный sql/receipt-scanner.sql. Причина Supabase: ${error.message ?? error.code}`);
+  }
   if (
     error?.code === 'PGRST202'
     || error?.code === '42P01'

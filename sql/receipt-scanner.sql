@@ -17,6 +17,19 @@ create table if not exists public.receipts (
   created_at timestamptz not null default now()
 );
 
+-- CREATE TABLE IF NOT EXISTS не обновляет ограничения ранее созданной таблицы.
+-- Пересоздаём контракт явно; NOT VALID сохраняет совместимость со старыми строками,
+-- но все новые записи уже проверяются по актуальным значениям приложения.
+alter table public.receipts drop constraint if exists receipts_source_check;
+alter table public.receipts
+  add constraint receipts_source_check
+  check (source in ('camera', 'upload', 'pdf', 'text')) not valid;
+
+alter table public.receipts drop constraint if exists receipts_status_check;
+alter table public.receipts
+  add constraint receipts_status_check
+  check (status in ('draft', 'imported')) not valid;
+
 create unique index if not exists receipts_user_key_unique
   on public.receipts(user_id, receipt_key)
   where receipt_key is not null;
@@ -38,6 +51,11 @@ create table if not exists public.receipt_items (
   created_at timestamptz not null default now()
 );
 
+alter table public.receipt_items drop constraint if exists receipt_items_fridge_unit_check;
+alter table public.receipt_items
+  add constraint receipt_items_fridge_unit_check
+  check (fridge_unit is null or fridge_unit in ('г', 'мл', 'шт')) not valid;
+
 create table if not exists public.product_aliases (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -49,6 +67,11 @@ create table if not exists public.product_aliases (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.product_aliases drop constraint if exists product_aliases_package_unit_check;
+alter table public.product_aliases
+  add constraint product_aliases_package_unit_check
+  check (package_unit is null or package_unit in ('г', 'мл', 'шт')) not valid;
 
 create unique index if not exists product_aliases_user_store_name_unique
   on public.product_aliases(user_id, coalesce(store, ''), raw_name_key);
@@ -240,9 +263,29 @@ select
   to_regclass('public.receipt_items') is not null as receipt_items_ready,
   to_regclass('public.product_aliases') is not null as product_aliases_ready,
   to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null as rpc_ready,
+  exists (
+    select 1
+    from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public'
+      and t.relname = 'receipts'
+      and c.conname = 'receipts_source_check'
+      and pg_get_constraintdef(c.oid) like '%upload%'
+  ) as source_constraint_ready,
   (
     to_regclass('public.receipts') is not null
     and to_regclass('public.receipt_items') is not null
     and to_regclass('public.product_aliases') is not null
     and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null
+    and exists (
+      select 1
+      from pg_constraint c
+      join pg_class t on t.oid = c.conrelid
+      join pg_namespace n on n.oid = t.relnamespace
+      where n.nspname = 'public'
+        and t.relname = 'receipts'
+        and c.conname = 'receipts_source_check'
+        and pg_get_constraintdef(c.oid) like '%upload%'
+    )
   ) as ready;
