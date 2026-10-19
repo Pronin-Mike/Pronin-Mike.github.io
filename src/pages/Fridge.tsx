@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Eraser, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Eraser, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ShelfLifeBadge from '../components/ShelfLifeBadge';
 import { SkeletonRows } from '../components/Loading';
@@ -10,6 +10,7 @@ import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
 import { normalizeName, round3 } from '../lib/availability';
 import { formatAmount, productWord } from '../lib/format';
+import { planFridgeNameNormalization } from '../lib/receiptMatcher';
 import { ETERNAL_PRODUCTS, defaultExpiresAt, getExpiryStatus } from '../lib/shelfLife';
 import { validateFridgeInput } from '../lib/validation';
 import type { ExpiryStatus } from '../lib/shelfLife';
@@ -77,6 +78,7 @@ export default function Fridge() {
   const [deleteTarget, setDeleteTarget] = useState<FridgeItem | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [pastDateOpen, setPastDateOpen] = useState(false);
+  const [normalizeOpen, setNormalizeOpen] = useState(false);
 
   /** Пользователь правил дату руками — автоподстановка больше не срабатывает. */
   const dateTouched = useRef(false);
@@ -257,6 +259,8 @@ export default function Fridge() {
       }).length,
     [fridge]
   );
+  const normalizationGroups = useMemo(() => planFridgeNameNormalization(fridge), [fridge]);
+  const normalizationRows = normalizationGroups.reduce((total, group) => total + group.ids.length, 0);
 
   return (
     <div className="flex flex-col gap-4 animate-rise-in">
@@ -424,6 +428,15 @@ export default function Fridge() {
 
           <Button
             variant="ghost"
+            disabled={busy || !normalizationGroups.length}
+            onClick={() => setNormalizeOpen(true)}
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Объединить названия{normalizationGroups.length ? ` (${normalizationGroups.length})` : ''}
+          </Button>
+
+          <Button
+            variant="ghost"
             className="text-berry-500"
             disabled={busy || !fridge.length}
             onClick={() => setClearOpen(true)}
@@ -546,6 +559,26 @@ export default function Fridge() {
           setPastDateOpen(false);
           if (value === 'save') void save(buildInput());
           else dateInput?.focus();
+        }}
+      />
+
+      <ConfirmDialog
+        open={normalizeOpen}
+        title="Объединить магазинные названия?"
+        description={`Будет обработано ${normalizationRows} позиций: бренды и служебные признаки будут заменены общей категорией, а остатки одинаковых продуктов сложатся.`}
+        busy={busy}
+        actions={[
+          { label: 'Объединить', value: 'normalize', variant: 'primary' },
+          { label: 'Отмена', value: 'cancel', variant: 'ghost' }
+        ]}
+        onResolve={(value) => {
+          setNormalizeOpen(false);
+          if (value === 'normalize') {
+            void run(
+              () => api.normalizeFridgeNames(normalizationGroups),
+              'Магазинные названия объединены.'
+            );
+          }
         }}
       />
 

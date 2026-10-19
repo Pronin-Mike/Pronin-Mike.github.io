@@ -32,6 +32,7 @@ vi.mock('./lib/api', () => ({
   updateFridgeItem: vi.fn(),
   deleteFridgeItem: vi.fn(),
   clearFridge: vi.fn(),
+  normalizeFridgeNames: vi.fn(),
   applyFridgeImport: vi.fn(),
   exportBackup: vi.fn(),
   importBackup: vi.fn(),
@@ -156,6 +157,20 @@ beforeEach(() => {
   vi.mocked(api.fetchFridge).mockImplementation(async () => [...fridge]);
   vi.mocked(api.cookDish).mockResolvedValue({ success: true, missing: [] });
   vi.mocked(api.applyFridgeImport).mockImplementation(async (plan) => plan.counts);
+  vi.mocked(api.normalizeFridgeNames).mockImplementation(async (groups) => {
+    let normalized = 0;
+    for (const group of groups) {
+      const matched = fridge.filter((item) => group.ids.includes(item.id) && item.unit === group.unit);
+      if (!matched.length) continue;
+      const target = matched[0];
+      const ids = new Set(matched.map((item) => item.id));
+      target.name = group.name;
+      target.amount = matched.reduce((sum, item) => sum + item.amount, 0);
+      fridge = fridge.filter((item) => item.id === target.id || !ids.has(item.id));
+      normalized += matched.length;
+    }
+    return normalized;
+  });
   vi.mocked(api.addFridgeItem).mockImplementation(async (input) => {
     const created: FridgeItem = {
       id: `p${fridge.length + 1}`,
@@ -382,6 +397,27 @@ describe('Подсказки ингредиентов из холодильни�
 
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(input.value).toBe('ог');
+  });
+});
+
+describe('Нормализация холодильника', () => {
+  it('по подтверждению объединяет старые магазинные названия', async () => {
+    fridge = [
+      { id: 'old-1', name: 'ТЕНД.Филе кур.0охл.ПОдл.', amount: 285, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'old-2', name: 'ТЕНД.Филе кур.охХп.moап.', amount: 722, unit: 'г', updatedAt: null, expiresAt: null }
+    ];
+    await openFridgePage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Объединить названия (1)' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Объединить магазинные названия?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Объединить' }));
+
+    await waitFor(() => expect(api.normalizeFridgeNames).toHaveBeenCalledWith([{
+      name: 'Филе куриное', unit: 'г', ids: ['old-1', 'old-2']
+    }]));
+    expect(await screen.findByText('Филе куриное')).toBeTruthy();
+    expect(screen.getByText('1007 г')).toBeTruthy();
+    expect(screen.queryByText('ТЕНД.Филе кур.0охл.ПОдл.')).toBeNull();
   });
 });
 

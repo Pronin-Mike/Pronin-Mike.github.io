@@ -19,6 +19,7 @@ describe('SHELF_LIFE_DAYS', () => {
   it('содержит базовые сроки для молочного, мяса и овощей', () => {
     expect(SHELF_LIFE_DAYS['молоко']).toBe(7);
     expect(SHELF_LIFE_DAYS['курица']).toBe(5);
+    expect(SHELF_LIFE_DAYS['филе куриное']).toBe(5);
     expect(SHELF_LIFE_DAYS['яйца']).toBe(30);
     expect(SHELF_LIFE_DAYS['хлеб']).toBe(3);
   });

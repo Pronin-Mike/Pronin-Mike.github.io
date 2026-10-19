@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PYATEROCHKA_COLUMN_OCR, SYNTHETIC_RECEIPTS } from './receiptFixtures';
-import { calculateFridgeAmount, matchReceiptItem, normalizeReceiptProduct } from './receiptMatcher';
+import { calculateFridgeAmount, matchReceiptItem, normalizeReceiptProduct, planFridgeNameNormalization } from './receiptMatcher';
 import { cleanReceiptProductName, detectReceiptStore, extractPackage, parseReceipt, receiptKey, receiptNameKey } from './receiptParser';
 
 describe('парсер синтетических чеков', () => {
@@ -69,19 +69,19 @@ describe('парсер синтетических чеков', () => {
 
     const matched = parsed.items.map((item) => matchReceiptItem(item, [], []));
     expect(matched[0]).toMatchObject({
-      normalizedName: 'KOP.KoH.AC.M/T шок.др. л/ор.',
+      normalizedName: 'Конфеты',
       fridgeAmount: 190,
       fridgeUnit: 'г',
-      needsReview: true
+      needsReview: false
     });
     expect(matched[1]).toMatchObject({
-      normalizedName: 'M&Ms Драже с арахисом',
+      normalizedName: 'Драже',
       fridgeAmount: 130,
       fridgeUnit: 'г'
     });
-    expect(matched[3]).toMatchObject({ fridgeAmount: 722, fridgeUnit: 'г' });
-    expect(matched[4]).toMatchObject({ fridgeAmount: 285, fridgeUnit: 'г' });
-    expect(matched[5]).toMatchObject({ normalizedName: 'Томаты сливовидные красные', fridgeAmount: null, fridgeUnit: null });
+    expect(matched[3]).toMatchObject({ normalizedName: 'Филе куриное', fridgeAmount: 722, fridgeUnit: 'г' });
+    expect(matched[4]).toMatchObject({ normalizedName: 'Филе куриное', fridgeAmount: 285, fridgeUnit: 'г' });
+    expect(matched[5]).toMatchObject({ normalizedName: 'Помидоры', fridgeAmount: null, fridgeUnit: null });
   });
 
   it('оставляет в названии только продукт, без артикула, фасовки и цен', () => {
@@ -99,7 +99,37 @@ describe('нормализация и сопоставление', () => {
     expect(normalizeReceiptProduct('МОЛ ПРОСТОКВ 3.2 930МЛ')).toBe('Молоко');
     expect(normalizeReceiptProduct('ЯЙЦО КУР С1 10ШТ')).toBe('Яйца');
     expect(normalizeReceiptProduct('СЫР РОССИЙСКИЙ 200Г')).toBe('Сыр');
+    expect(normalizeReceiptProduct('ТЕНД.Филе кур.0охл.ПОдл.')).toBe('Филе куриное');
+    expect(normalizeReceiptProduct('ТЕНД.Филе kyp.oxXn.moan.')).toBe('Филе куриное');
+    expect(normalizeReceiptProduct('Томаты сливовидные красные')).toBe('Помидоры');
+    expect(normalizeReceiptProduct('M&Ms Драже с арахисом')).toBe('Драже');
+    expect(normalizeReceiptProduct('KOP.KoH.AC.M/T шок.др. л/ор.')).toBe('Конфеты');
     expect(normalizeReceiptProduct('НАПИТОК ОВСЯНЫЙ')).toBeNull();
+  });
+
+  it('находит и объединяет старые OCR-названия одной категории', () => {
+    const parsed = parseReceipt('ТЕНД.Филе кур.охл.подл. 0,285 кг x 236,54 67,41').items[0];
+    const matched = matchReceiptItem(parsed, [], [
+      { id: 'old-1', name: 'ТЕНД.Филе кур.0охл.ПОдл.', amount: 285, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'old-2', name: 'ТЕНД.Филе кур.охХп.moап.', amount: 722, unit: 'г', updatedAt: null, expiresAt: null }
+    ]);
+
+    expect(matched.normalizedName).toBe('Филе куриное');
+    expect(matched.matchedFridgeIds).toEqual(['old-1', 'old-2']);
+    expect(matched.matchStatus).toBe('fridge');
+  });
+
+  it('строит безопасный план очистки уже сохранённых названий', () => {
+    expect(planFridgeNameNormalization([
+      { id: 'old-1', name: 'ТЕНД.Филе кур.0охл.ПОдл.', amount: 285, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'old-2', name: 'ТЕНД.Филе кур.охХп.moап.', amount: 722, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'milk', name: 'Молоко', amount: 930, unit: 'мл', updatedAt: null, expiresAt: null },
+      { id: 'unknown', name: 'Неизвестный продукт', amount: 1, unit: 'шт', updatedAt: null, expiresAt: null }
+    ])).toEqual([{
+      name: 'Филе куриное',
+      unit: 'г',
+      ids: ['old-1', 'old-2']
+    }]);
   });
 
   it('сначала применяет точный пользовательский алиас', () => {

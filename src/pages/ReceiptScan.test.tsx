@@ -84,10 +84,13 @@ describe('экран сканирования чека', () => {
     const names = await screen.findAllByLabelText('Продукт') as HTMLInputElement[];
     const amounts = screen.getAllByLabelText('Количество') as HTMLInputElement[];
     const units = screen.getAllByLabelText('Единица') as HTMLSelectElement[];
-    expect(names[0].value).toBe('KOP.KoH.AC.M/T шок.др. л/ор.');
+    expect(names[0].value).toBe('Конфеты');
     expect(amounts[0].value).toBe('190');
     expect(units[0].value).toBe('г');
-    expect(names[1].value).toBe('M&Ms Драже с арахисом');
+    expect(names[1].value).toBe('Драже');
+    expect(names[3].value).toBe('Филе куриное');
+    expect(names[4].value).toBe('Филе куриное');
+    expect(names[5].value).toBe('Помидоры');
     expect(amounts[3].value).toBe('722');
     expect(units[3].value).toBe('г');
   });

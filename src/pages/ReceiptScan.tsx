@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, FileText, History, ScanLine, Trash2, Upload } from 'lucide-react';
 import * as api from '../lib/api';
 import { planFridgeImport } from '../lib/fridgeImport';
-import { matchReceiptItem } from '../lib/receiptMatcher';
+import { matchReceiptItem, normalizeReceiptProduct } from '../lib/receiptMatcher';
 import { parseReceipt, receiptKey, type ParsedReceipt, type ReceiptStore } from '../lib/receiptParser';
 import { extractPdfText, recognizeImage, recognizePdfPages, type RecognitionProgress } from '../lib/receiptOcr';
 import { supabaseProjectRef } from '../lib/supabase';
@@ -69,7 +69,11 @@ export default function ReceiptScan() {
         amount: item.fridgeAmount as number,
         unit: item.fridgeUnit as Unit
       }));
-    return planFridgeImport(rows, fridge, 'sum');
+    const canonicalFridge = fridge.map((item) => ({
+      ...item,
+      name: normalizeReceiptProduct(item.name) ?? item.name
+    }));
+    return planFridgeImport(rows, canonicalFridge, 'sum');
   }, [fridge, items]);
 
   const applyParsed = (text: string, nextSource: ReceiptSource) => {
@@ -142,6 +146,9 @@ export default function ReceiptScan() {
       if (patch.normalizedName !== undefined || patch.fridgeAmount !== undefined || patch.fridgeUnit !== undefined) {
         next.matchStatus = 'manual';
         next.needsReview = !next.normalizedName.trim() || !next.fridgeAmount || !next.fridgeUnit;
+      }
+      if (patch.normalizedName !== undefined || patch.fridgeUnit !== undefined) {
+        next.matchedFridgeIds = [];
       }
       return next;
     }));

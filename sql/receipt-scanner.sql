@@ -182,6 +182,9 @@ declare
   v_amount numeric;
   v_price numeric;
   v_fridge_id uuid;
+  v_fridge_ids uuid[];
+  v_existing_amount numeric;
+  v_existing_expires date;
   v_expires date;
   v_count integer := 0;
 begin
@@ -247,33 +250,66 @@ begin
         raise exception 'Invalid fridge quantity or unit for %', v_name;
       end if;
 
-      -- Существующая клиентская логика сравнивает названия без учёта регистра.
-      select id into v_fridge_id
-      from public.fridge_items
+      -- Клиент передаёт id строк, которые относятся к той же канонической
+      -- категории. Это позволяет объединить старые OCR-названия вроде двух
+      -- вариантов «ТЕНД.Филе ...» без доверия к id чужого пользователя: RLS
+      -- SECURITY INVOKER скрывает недоступные строки.
+      select coalesce(array_agg(locked.id order by locked.id), '{}'::uuid[])
+      into v_fridge_ids
+      from (
+        select fi.id
+        from public.fridge_items fi
+        where fi.unit = v_unit
+          and fi.id in (
+            select candidate.value::uuid
+            from jsonb_array_elements_text(coalesce(v_item->'fridge_ids', '[]'::jsonb)) candidate(value)
+            where candidate.value ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          )
+        order by fi.id
+        for update
+      ) locked;
+
+      if cardinality(v_fridge_ids) = 0 then
+        select id into v_fridge_id
+        from public.fridge_items
         where lower(btrim(name)) = lower(v_name) and unit = v_unit
         order by id
-        limit 1;
+        limit 1
+        for update;
+        v_fridge_ids := case when found then array[v_fridge_id] else '{}'::uuid[] end;
+      end if;
 
-      if found then
-        if p_conflict_mode = 'replace' then
-          update public.fridge_items
-          set amount = v_amount,
-              last_purchase_price = coalesce(v_price, last_purchase_price),
-              expires_at = v_expires,
-              updated_at = now()
-          where id = v_fridge_id;
-        elsif p_conflict_mode = 'sum' then
-          update public.fridge_items
-          set amount = amount + v_amount,
-              last_purchase_price = coalesce(v_price, last_purchase_price),
-              expires_at = case
-                when expires_at is null then v_expires
-                when v_expires is null then expires_at
-                else least(expires_at, v_expires)
-              end,
-              updated_at = now()
-          where id = v_fridge_id;
-        end if;
+      if cardinality(v_fridge_ids) > 0 then
+        v_fridge_id := v_fridge_ids[1];
+        select sum(amount), min(expires_at)
+        into v_existing_amount, v_existing_expires
+        from public.fridge_items
+        where id = any(v_fridge_ids);
+
+        -- Несколько старых магазинных названий становятся одной общей позицией.
+        delete from public.fridge_items
+        where id = any(v_fridge_ids) and id <> v_fridge_id;
+
+        update public.fridge_items
+        set name = v_name,
+            amount = case p_conflict_mode
+              when 'replace' then v_amount
+              when 'keep' then v_existing_amount
+              else v_existing_amount + v_amount
+            end,
+            last_purchase_price = case
+              when p_conflict_mode = 'keep' then last_purchase_price
+              else coalesce(v_price, last_purchase_price)
+            end,
+            expires_at = case
+              when p_conflict_mode = 'replace' then v_expires
+              when p_conflict_mode = 'keep' then v_existing_expires
+              when v_existing_expires is null then v_expires
+              when v_expires is null then v_existing_expires
+              else least(v_existing_expires, v_expires)
+            end,
+            updated_at = now()
+        where id = v_fridge_id;
       else
         insert into public.fridge_items(name, amount, unit, expires_at, last_purchase_price)
         values (v_name, v_amount, v_unit, v_expires, v_price)
@@ -336,6 +372,81 @@ $$;
 revoke all on function public.import_receipt(uuid, jsonb, jsonb, text) from public, anon;
 grant execute on function public.import_receipt(uuid, jsonb, jsonb, text) to authenticated;
 
+create or replace function public.normalize_fridge_names(p_groups jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  v_group jsonb;
+  v_name text;
+  v_unit text;
+  v_ids uuid[];
+  v_target_id uuid;
+  v_amount numeric;
+  v_expires date;
+  v_normalized integer := 0;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+  if p_groups is null or jsonb_typeof(p_groups) <> 'array' then
+    raise exception 'Normalization groups must be an array';
+  end if;
+
+  for v_group in select value from jsonb_array_elements(p_groups)
+  loop
+    v_name := btrim(v_group->>'name');
+    v_unit := v_group->>'unit';
+    if v_name = '' or v_unit not in ('г', 'мл', 'шт') then
+      raise exception 'Invalid normalization group';
+    end if;
+
+    select coalesce(array_agg(locked.id order by locked.is_canonical desc, locked.updated_at desc nulls last, locked.id), '{}'::uuid[])
+    into v_ids
+    from (
+      select fi.id, fi.updated_at, lower(btrim(fi.name)) = lower(v_name) as is_canonical
+      from public.fridge_items fi
+      where fi.unit = v_unit
+        and fi.id in (
+          select candidate.value::uuid
+          from jsonb_array_elements_text(coalesce(v_group->'ids', '[]'::jsonb)) candidate(value)
+          where candidate.value ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        )
+      for update
+    ) locked;
+
+    if cardinality(v_ids) = 0 then
+      continue;
+    end if;
+
+    v_target_id := v_ids[1];
+    select sum(amount), min(expires_at)
+    into v_amount, v_expires
+    from public.fridge_items
+    where id = any(v_ids);
+
+    delete from public.fridge_items
+    where id = any(v_ids) and id <> v_target_id;
+
+    update public.fridge_items
+    set name = v_name,
+        amount = v_amount,
+        expires_at = v_expires,
+        updated_at = now()
+    where id = v_target_id;
+
+    v_normalized := v_normalized + cardinality(v_ids);
+  end loop;
+
+  return jsonb_build_object('success', true, 'normalized', v_normalized);
+end;
+$$;
+
+revoke all on function public.normalize_fridge_names(jsonb) from public, anon;
+grant execute on function public.normalize_fridge_names(jsonb) to authenticated;
+
 -- PostgREST иногда не подхватывает новые таблицы и RPC немедленно.
 select pg_notify('pgrst', 'reload schema');
 
@@ -346,6 +457,7 @@ select
   to_regclass('public.receipt_items') is not null as receipt_items_ready,
   to_regclass('public.product_aliases') is not null as product_aliases_ready,
   to_regprocedure('public.import_receipt(uuid,jsonb,jsonb,text)') is not null as rpc_ready,
+  to_regprocedure('public.normalize_fridge_names(jsonb)') is not null as normalize_rpc_ready,
   exists (
     select 1
     from information_schema.columns
@@ -388,6 +500,7 @@ select
     and to_regclass('public.receipt_items') is not null
     and to_regclass('public.product_aliases') is not null
     and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb,text)') is not null
+    and to_regprocedure('public.normalize_fridge_names(jsonb)') is not null
     and exists (
       select 1
       from information_schema.columns

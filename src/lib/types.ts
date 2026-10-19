@@ -104,6 +104,8 @@ export interface Receipt {
 
 export interface ReceiptItem {
   id?: string;
+  /** Существующие строки холодильника той же канонической категории; в историю чека не записывается. */
+  matchedFridgeIds?: string[];
   lineNumber: number;
   rawName: string;
   normalizedName: string;
@@ -370,7 +372,11 @@ export type Database = {
         Returns: unknown;
       };
       import_receipt: {
-        Args: { p_receipt_id: string; p_items: unknown; p_aliases: unknown };
+        Args: { p_receipt_id: string; p_items: unknown; p_aliases: unknown; p_conflict_mode: ReceiptConflictMode };
+        Returns: unknown;
+      };
+      normalize_fridge_names: {
+        Args: { p_groups: unknown };
         Returns: unknown;
       };
     };

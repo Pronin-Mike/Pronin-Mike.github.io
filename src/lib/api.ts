@@ -38,6 +38,7 @@ import { isUnit } from './types';
 import { receiptNameKey } from './receiptParser';
 import { round3 } from './availability';
 import { defaultExpiresAt } from './shelfLife';
+import type { FridgeNameNormalizationGroup } from './receiptMatcher';
 import type { FridgeImportCounts, FridgeImportPlan } from './fridgeImport';
 
 /** Единая точка превращения ошибки Supabase в Error с понятным текстом. */
@@ -424,6 +425,7 @@ export async function importReceipt(
     total_price: item.totalPrice,
     include_in_fridge: item.includeInFridge,
     match_status: item.matchStatus,
+    fridge_ids: item.matchedFridgeIds ?? [],
     expires_at: item.includeInFridge ? defaultExpiresAt(item.normalizedName) : null
   }));
   const { error } = await supabase.rpc('import_receipt', {
@@ -433,6 +435,20 @@ export async function importReceipt(
     p_conflict_mode: conflictMode
   });
   if (error) raiseReceipt('Не удалось импортировать чек', error);
+}
+
+export async function normalizeFridgeNames(groups: FridgeNameNormalizationGroup[]): Promise<number> {
+  if (!groups.length) return 0;
+  const { data, error } = await supabase.rpc('normalize_fridge_names', {
+    p_groups: groups.map((group) => ({
+      name: group.name,
+      unit: group.unit,
+      ids: group.ids
+    }))
+  });
+  if (error) raiseReceipt('Не удалось объединить магазинные названия', error);
+  const result = data as { normalized?: number } | null;
+  return result?.normalized ?? 0;
 }
 
 export async function fetchReceipts(): Promise<Receipt[]> {
