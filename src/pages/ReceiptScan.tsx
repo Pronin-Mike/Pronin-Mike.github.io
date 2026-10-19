@@ -6,7 +6,7 @@ import { matchReceiptItem } from '../lib/receiptMatcher';
 import { parseReceipt, receiptKey, type ParsedReceipt, type ReceiptStore } from '../lib/receiptParser';
 import { extractPdfText, recognizeImage, recognizePdfPages, type RecognitionProgress } from '../lib/receiptOcr';
 import { supabaseProjectRef } from '../lib/supabase';
-import type { FridgeItem, ProductAlias, Receipt, ReceiptItem, ReceiptSource, Unit } from '../lib/types';
+import type { FridgeItem, ProductAlias, Receipt, ReceiptConflictMode, ReceiptItem, ReceiptSource, Unit } from '../lib/types';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -44,6 +44,7 @@ export default function ReceiptScan() {
   const [busy, setBusy] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Receipt | null>(null);
+  const [conflictOpen, setConflictOpen] = useState(false);
 
   const reloadHistory = async () => setHistory(await api.fetchReceipts());
 
@@ -165,7 +166,7 @@ export default function ReceiptScan() {
     ) ?? null;
   }, [history, parsed, store]);
 
-  const handleImport = async () => {
+  const handleImport = async (conflictMode: ReceiptConflictMode = 'sum') => {
     if (!parsed || !canImport) return;
     setBusy(true);
     setImportError(null);
@@ -186,7 +187,7 @@ export default function ReceiptScan() {
         receiptId = draft.id;
         setDraftId(draft.id);
       }
-      await api.importReceipt(receiptId, items, store);
+      await api.importReceipt(receiptId, items, store, conflictMode);
       toast.show(`Чек импортирован: ${items.filter((item) => item.includeInFridge).length} позиций.`, 'success');
       setParsed(null);
       setItems([]);
@@ -301,7 +302,7 @@ export default function ReceiptScan() {
 
           <div className="rounded-2xl bg-cream-100 p-4 text-sm">
             <p className="font-semibold text-ink">Будет обработано: {items.filter((item) => item.includeInFridge).length}</p>
-            <p className="mt-1 text-ink-soft">Новых: {importPlan.counts.added}; количество увеличится: {importPlan.counts.summed}; пропущено: {importPlan.counts.skipped}. Срок годности будет ориентировочным по существующим правилам.</p>
+            <p className="mt-1 text-ink-soft">Новых: {importPlan.counts.added}; совпадений: {importPlan.counts.summed}; пропущено: {importPlan.counts.skipped}. Для совпадений можно заменить, оставить текущее количество или сложить.</p>
           </div>
           {storageError && (
             <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -318,7 +319,7 @@ export default function ReceiptScan() {
             </p>
           )}
           {importError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{importError}</div>}
-          <Button className="w-full" disabled={busy || !canImport || storageError !== null} onClick={() => void handleImport()}>{busy ? 'Сохраняем…' : 'Добавить выбранное в холодильник'}</Button>
+          <Button className="w-full" disabled={busy || !canImport || storageError !== null} onClick={() => importPlan.counts.summed > 0 ? setConflictOpen(true) : void handleImport('sum')}>{busy ? 'Сохраняем…' : 'Добавить выбранное в холодильник'}</Button>
         </Card>
       )}
 
@@ -345,6 +346,22 @@ export default function ReceiptScan() {
           {!historyItems.length && <p className="text-sm text-ink-soft">Позиции не найдены.</p>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={conflictOpen}
+        title="Такие продукты уже есть"
+        description={`Совпадений: ${importPlan.counts.summed}. Как обработать существующие позиции? Выбранное действие применится ко всем совпадениям.`}
+        busy={busy}
+        actions={[
+          { label: 'Заменить', value: 'replace', variant: 'primary' },
+          { label: 'Оставить как есть', value: 'keep', variant: 'ghost' },
+          { label: 'Сложить', value: 'sum', variant: 'olive' }
+        ]}
+        onResolve={(value) => {
+          setConflictOpen(false);
+          if (value === 'replace' || value === 'keep' || value === 'sum') void handleImport(value);
+        }}
+      />
 
       <ConfirmDialog
         open={deleteTarget !== null}

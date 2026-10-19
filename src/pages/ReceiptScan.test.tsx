@@ -104,8 +104,34 @@ describe('экран сканирования чека', () => {
     await parseText();
     fireEvent.click(screen.getByRole('button', { name: 'Добавить выбранное в холодильник' }));
     await waitFor(() => expect(api.createReceiptDraft).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(api.importReceipt).toHaveBeenCalledWith('r1', expect.any(Array), 'Пятёрочка'));
+    await waitFor(() => expect(api.importReceipt).toHaveBeenCalledWith('r1', expect.any(Array), 'Пятёрочка', 'sum'));
     expect(await screen.findByText(/Чек импортирован/)).toBeTruthy();
+  });
+
+  it.each([
+    ['Заменить', 'replace'],
+    ['Оставить как есть', 'keep'],
+    ['Сложить', 'sum']
+  ] as const)('для совпадающего продукта позволяет выбрать «%s»', async (buttonName, conflictMode) => {
+    vi.mocked(api.fetchFridge).mockResolvedValue([{
+      id: 'f1',
+      name: 'Молоко',
+      amount: 500,
+      unit: 'мл',
+      updatedAt: null,
+      expiresAt: null,
+      lastPurchasePrice: null
+    }]);
+    renderPage();
+    await parseText();
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить выбранное в холодильник' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Такие продукты уже есть' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: buttonName }));
+
+    await waitFor(() => expect(api.importReceipt).toHaveBeenCalledWith(
+      'r1', expect.any(Array), 'Пятёрочка', conflictMode
+    ));
   });
 
   it('позволяет исправить цену позиции до сохранения', async () => {

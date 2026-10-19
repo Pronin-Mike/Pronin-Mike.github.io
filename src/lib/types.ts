@@ -84,6 +84,7 @@ export interface FridgeInput {
 export type ReceiptSource = 'camera' | 'upload' | 'pdf' | 'text';
 export type ReceiptStatus = 'draft' | 'imported';
 export type ReceiptMatchStatus = 'alias' | 'fridge' | 'normalized' | 'manual' | 'unmatched';
+export type ReceiptConflictMode = 'replace' | 'keep' | 'sum';
 
 export interface Receipt {
   id: string;

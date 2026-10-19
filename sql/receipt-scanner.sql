@@ -161,10 +161,13 @@ grant select, insert, update, delete on public.receipts to authenticated;
 grant select, insert, update, delete on public.receipt_items to authenticated;
 grant select, insert, update, delete on public.product_aliases to authenticated;
 
+drop function if exists public.import_receipt(uuid, jsonb, jsonb);
+
 create or replace function public.import_receipt(
   p_receipt_id uuid,
   p_items jsonb,
-  p_aliases jsonb default '[]'::jsonb
+  p_aliases jsonb default '[]'::jsonb,
+  p_conflict_mode text default 'sum'
 ) returns jsonb
 language plpgsql
 security invoker
@@ -178,6 +181,7 @@ declare
   v_unit text;
   v_amount numeric;
   v_price numeric;
+  v_fridge_id uuid;
   v_expires date;
   v_count integer := 0;
 begin
@@ -189,6 +193,9 @@ begin
   end if;
   if p_aliases is null or jsonb_typeof(p_aliases) <> 'array' then
     raise exception 'Aliases must be an array';
+  end if;
+  if p_conflict_mode not in ('replace', 'keep', 'sum') then
+    raise exception 'Invalid fridge conflict mode';
   end if;
 
   select * into v_receipt
@@ -241,34 +248,53 @@ begin
       end if;
 
       -- Существующая клиентская логика сравнивает названия без учёта регистра.
-      update public.fridge_items
-      set amount = amount + v_amount,
-          last_purchase_price = coalesce(v_price, last_purchase_price),
-          expires_at = case
-            when expires_at is null then v_expires
-            when v_expires is null then expires_at
-            else least(expires_at, v_expires)
-          end,
-          updated_at = now()
-      where id = (
-        select id from public.fridge_items
+      select id into v_fridge_id
+      from public.fridge_items
         where lower(btrim(name)) = lower(v_name) and unit = v_unit
         order by id
-        limit 1
-      );
+        limit 1;
 
-      if not found then
+      if found then
+        if p_conflict_mode = 'replace' then
+          update public.fridge_items
+          set amount = v_amount,
+              last_purchase_price = coalesce(v_price, last_purchase_price),
+              expires_at = v_expires,
+              updated_at = now()
+          where id = v_fridge_id;
+        elsif p_conflict_mode = 'sum' then
+          update public.fridge_items
+          set amount = amount + v_amount,
+              last_purchase_price = coalesce(v_price, last_purchase_price),
+              expires_at = case
+                when expires_at is null then v_expires
+                when v_expires is null then expires_at
+                else least(expires_at, v_expires)
+              end,
+              updated_at = now()
+          where id = v_fridge_id;
+        end if;
+      else
         insert into public.fridge_items(name, amount, unit, expires_at, last_purchase_price)
         values (v_name, v_amount, v_unit, v_expires, v_price)
         on conflict (name, unit) do update
-        set amount = public.fridge_items.amount + excluded.amount,
-            last_purchase_price = coalesce(excluded.last_purchase_price, public.fridge_items.last_purchase_price),
+        set amount = case p_conflict_mode
+              when 'replace' then excluded.amount
+              when 'keep' then public.fridge_items.amount
+              else public.fridge_items.amount + excluded.amount
+            end,
+            last_purchase_price = case
+              when p_conflict_mode = 'keep' then public.fridge_items.last_purchase_price
+              else coalesce(excluded.last_purchase_price, public.fridge_items.last_purchase_price)
+            end,
             expires_at = case
+              when p_conflict_mode = 'keep' then public.fridge_items.expires_at
+              when p_conflict_mode = 'replace' then excluded.expires_at
               when public.fridge_items.expires_at is null then excluded.expires_at
               when excluded.expires_at is null then public.fridge_items.expires_at
               else least(public.fridge_items.expires_at, excluded.expires_at)
             end,
-            updated_at = now();
+            updated_at = case when p_conflict_mode = 'keep' then public.fridge_items.updated_at else now() end;
       end if;
       v_count := v_count + 1;
     end if;
@@ -307,8 +333,8 @@ begin
 end;
 $$;
 
-revoke all on function public.import_receipt(uuid, jsonb, jsonb) from public, anon;
-grant execute on function public.import_receipt(uuid, jsonb, jsonb) to authenticated;
+revoke all on function public.import_receipt(uuid, jsonb, jsonb, text) from public, anon;
+grant execute on function public.import_receipt(uuid, jsonb, jsonb, text) to authenticated;
 
 -- PostgREST иногда не подхватывает новые таблицы и RPC немедленно.
 select pg_notify('pgrst', 'reload schema');
@@ -319,7 +345,7 @@ select
   to_regclass('public.receipts') is not null as receipts_ready,
   to_regclass('public.receipt_items') is not null as receipt_items_ready,
   to_regclass('public.product_aliases') is not null as product_aliases_ready,
-  to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null as rpc_ready,
+  to_regprocedure('public.import_receipt(uuid,jsonb,jsonb,text)') is not null as rpc_ready,
   exists (
     select 1
     from information_schema.columns
@@ -361,7 +387,7 @@ select
     to_regclass('public.receipts') is not null
     and to_regclass('public.receipt_items') is not null
     and to_regclass('public.product_aliases') is not null
-    and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null
+    and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb,text)') is not null
     and exists (
       select 1
       from information_schema.columns

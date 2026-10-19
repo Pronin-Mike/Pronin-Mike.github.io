@@ -28,6 +28,7 @@ import type {
   ProductAlias,
   ProductAliasRow,
   Receipt,
+  ReceiptConflictMode,
   ReceiptItem,
   ReceiptItemRow,
   ReceiptRow,
@@ -394,7 +395,12 @@ export async function createReceiptDraft(input: ReceiptDraftInput): Promise<Rece
   return receipt;
 }
 
-export async function importReceipt(receiptId: string, items: ReceiptItem[], store: string | null): Promise<void> {
+export async function importReceipt(
+  receiptId: string,
+  items: ReceiptItem[],
+  store: string | null,
+  conflictMode: ReceiptConflictMode = 'sum'
+): Promise<void> {
   const aliases = items
     .filter((item) => item.includeInFridge && item.matchStatus === 'manual')
     .map((item) => ({
@@ -423,7 +429,8 @@ export async function importReceipt(receiptId: string, items: ReceiptItem[], sto
   const { error } = await supabase.rpc('import_receipt', {
     p_receipt_id: receiptId,
     p_items: payload,
-    p_aliases: aliases
+    p_aliases: aliases,
+    p_conflict_mode: conflictMode
   });
   if (error) raiseReceipt('Не удалось импортировать чек', error);
 }
