@@ -85,7 +85,8 @@ function toFridgeItem(row: FridgeItemRow): FridgeItem {
     amount: Number(row.amount),
     unit: toUnit(row.unit),
     updatedAt: row.updated_at,
-    expiresAt: row.expires_at ?? null
+    expiresAt: row.expires_at ?? null,
+    lastPurchasePrice: row.last_purchase_price === null ? null : Number(row.last_purchase_price)
   };
 }
 
@@ -194,7 +195,13 @@ export async function addFridgeItem(input: FridgeInput): Promise<FridgeItem> {
 
   const { data, error } = await supabase
     .from('fridge_items')
-    .insert({ name, amount: round3(input.amount), unit: input.unit, expires_at: expiresAt })
+    .insert({
+      name,
+      amount: round3(input.amount),
+      unit: input.unit,
+      expires_at: expiresAt,
+      last_purchase_price: input.lastPurchasePrice ?? null
+    })
     .select('*')
     .single();
 
@@ -206,11 +213,18 @@ export async function updateFridgeItem(
   id: string,
   patch: Partial<FridgeInput>
 ): Promise<FridgeItem> {
-  const payload: { name?: string; amount?: number; unit?: string; expires_at?: string | null } = {};
+  const payload: {
+    name?: string;
+    amount?: number;
+    unit?: string;
+    expires_at?: string | null;
+    last_purchase_price?: number | null;
+  } = {};
   if (patch.name !== undefined) payload.name = patch.name.trim();
   if (patch.amount !== undefined) payload.amount = round3(patch.amount);
   if (patch.unit !== undefined) payload.unit = patch.unit;
   if (patch.expiresAt !== undefined) payload.expires_at = patch.expiresAt;
+  if (patch.lastPurchasePrice !== undefined) payload.last_purchase_price = patch.lastPurchasePrice;
 
   const { data, error } = await supabase
     .from('fridge_items')
@@ -434,9 +448,10 @@ export async function fetchReceiptItems(receiptId: string): Promise<ReceiptItem[
   return (data ?? []).map((row: ReceiptItemRow) => toReceiptItem(row));
 }
 
-export async function deleteReceiptDraft(receiptId: string): Promise<void> {
-  const { error } = await supabase.from('receipts').delete().eq('id', receiptId).eq('status', 'draft');
-  if (error) raiseReceipt('Не удалось удалить черновик чека', error);
+export async function deleteReceipt(receiptId: string): Promise<void> {
+  const { data, error } = await supabase.from('receipts').delete().eq('id', receiptId).select('id').maybeSingle();
+  if (error) raiseReceipt('Не удалось удалить чек', error);
+  if (!data) throw new Error('Чек не найден или уже удалён');
 }
 
 /* -------------------------------------------------------------------------- *
@@ -641,7 +656,10 @@ export async function importBackup(
         name: row.name.trim(),
         amount: round3(Number(row.amount)),
         unit: row.unit,
-        expires_at: typeof row.expires_at === 'string' ? row.expires_at : defaultExpiresAt(row.name) ?? null
+        expires_at: typeof row.expires_at === 'string' ? row.expires_at : defaultExpiresAt(row.name) ?? null,
+        last_purchase_price: Number.isFinite(Number(row.last_purchase_price))
+          ? Number(row.last_purchase_price)
+          : null
       }))
     );
     if (error) raise('Не удалось загрузить холодильник', error);

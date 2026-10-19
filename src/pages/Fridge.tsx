@@ -35,6 +35,10 @@ type SortMode = 'name' | 'expiry';
 /** Быстрые чипы «+Nд» рядом с полем срока годности. */
 const QUICK_DAYS = [1, 3, 7, 14, 30];
 
+function money(value: number): string {
+  return `${value.toFixed(2)} ₽`;
+}
+
 /** Порядок групп при сортировке по сроку: просроченное — вверху. */
 const STATUS_ORDER: Record<ExpiryStatus, number> = {
   expired: 0,
@@ -453,6 +457,11 @@ export default function Fridge() {
               <span className="shrink-0 rounded-full bg-terra-50 px-3 py-1 text-sm font-bold tabular-nums text-terra-700">
                 {formatAmount(item.amount)} {item.unit}
               </span>
+              {item.lastPurchasePrice != null ? (
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-soft" title="Цена в последнем импортированном чеке">
+                  {money(item.lastPurchasePrice)}
+                </span>
+              ) : null}
               <ShelfLifeBadge expiresAt={item.expiresAt} />
               <span className="flex shrink-0 gap-1.5">
                 <Button

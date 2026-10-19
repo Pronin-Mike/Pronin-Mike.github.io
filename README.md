@@ -461,7 +461,7 @@ PDF.js сначала извлекает текстовый слой; если �
 | Объект | Что используется |
 |---|---|
 | `sections` | `id text`, `title_ru text`, `sort_order int`; строки `breakfast/Завтрак`, `lunch/Обед`, `dinner/Ужин` |
-| `fridge_items` | `id uuid`, `name text`, `amount numeric`, `unit text`, `expires_at date null`, `updated_at`; ограничения `unique (name, unit)`, `unit in ('г','мл','шт')`, `amount >= 0`, `fridge_expires_at_sane` (в пределах ±365 дней от `current_date`), индекс `idx_fridge_items_expires_at` |
+| `fridge_items` | `id uuid`, `name text`, `amount numeric`, `unit text`, `expires_at date null`, `last_purchase_price numeric null`, `updated_at`; ограничения `unique (name, unit)`, `unit in ('г','мл','шт')`, `amount >= 0`, цена неотрицательна, `fridge_expires_at_sane` (в пределах ±365 дней от `current_date`), индекс `idx_fridge_items_expires_at` |
 | `dishes` | `id uuid`, `title`, `section_id → sections.id`, `time_min int null`, `steps text[]`, `notes text`, `created_at`, `updated_at` |
 | `dish_ingredients` | `id uuid`, `dish_id → dishes.id on delete cascade`, `name`, `amount numeric`, `unit`, `sort_order int` |
 | `cook_log` | `id uuid`, `dish_id → dishes.id on delete set null`, `cooked_at` |

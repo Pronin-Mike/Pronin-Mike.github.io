@@ -14,7 +14,7 @@ vi.mock('../lib/api', () => ({
   fetchReceiptItems: vi.fn(),
   createReceiptDraft: vi.fn(),
   importReceipt: vi.fn(),
-  deleteReceiptDraft: vi.fn()
+  deleteReceipt: vi.fn()
 }));
 
 vi.mock('../lib/receiptOcr', () => ({
@@ -46,6 +46,7 @@ beforeEach(() => {
     importedAt: null, createdAt: '2026-10-19T00:00:00Z'
   });
   vi.mocked(api.importReceipt).mockResolvedValue();
+  vi.mocked(api.deleteReceipt).mockResolvedValue();
   vi.mocked(ocr.recognizeImage).mockResolvedValue(TEXT);
 });
 
@@ -105,6 +106,32 @@ describe('экран сканирования чека', () => {
     await waitFor(() => expect(api.createReceiptDraft).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.importReceipt).toHaveBeenCalledWith('r1', expect.any(Array), 'Пятёрочка'));
     expect(await screen.findByText(/Чек импортирован/)).toBeTruthy();
+  });
+
+  it('позволяет исправить цену позиции до сохранения', async () => {
+    renderPage();
+    await parseText();
+    const price = screen.getByLabelText('Цена, ₽') as HTMLInputElement;
+    expect(price.value).toBe('89.9');
+    fireEvent.change(price, { target: { value: '87.50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить выбранное в холодильник' }));
+    await waitFor(() => expect(api.createReceiptDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ items: [expect.objectContaining({ totalPrice: 87.5 })] })
+    ));
+  });
+
+  it('удаляет импортированный чек из истории после подтверждения', async () => {
+    vi.mocked(api.fetchReceipts).mockResolvedValue([{
+      id: 'r2', store: 'Пятёрочка', source: 'camera', purchasedAt: null, totalAmount: 56.13,
+      fiscalFn: null, fiscalFd: null, fiscalFp: null, receiptKey: null, status: 'imported',
+      importedAt: '2026-10-19T00:00:00Z', createdAt: '2026-10-19T00:00:00Z', itemCount: 1
+    }]);
+    renderPage();
+    const remove = await screen.findByRole('button', { name: 'Удалить чек Пятёрочка' });
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить чек' }));
+    await waitFor(() => expect(api.deleteReceipt).toHaveBeenCalledWith('r2'));
+    expect(screen.queryByText('Импортирован')).toBeNull();
   });
 
   it('считает импорт успешным, даже если последующее обновление списка не загрузилось', async () => {

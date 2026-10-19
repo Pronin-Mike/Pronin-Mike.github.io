@@ -53,6 +53,8 @@ export interface FridgeItem {
   updatedAt: string | null;
   /** Дата «годен до» в формате YYYY-MM-DD; null — срок не отслеживается. */
   expiresAt: string | null;
+  /** Общая цена позиции в последнем импортированном чеке. */
+  lastPurchasePrice?: number | null;
 }
 
 /** Данные формы блюда (создание и редактирование). */
@@ -71,6 +73,8 @@ export interface FridgeInput {
   unit: Unit;
   /** Если не задано — api подставит срок по названию (см. lib/shelfLife.ts). */
   expiresAt?: string | null;
+  /** Для ручного ввода необязательно; при импорте чека заполняется автоматически. */
+  lastPurchasePrice?: number | null;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -177,6 +181,7 @@ export type FridgeItemRow = {
   unit: string;
   updated_at: string | null;
   expires_at: string | null;
+  last_purchase_price: number | null;
 };
 
 export type DishRow = {
@@ -272,6 +277,7 @@ export type FridgeItemInsert = {
   unit: string;
   updated_at?: string | null;
   expires_at?: string | null;
+  last_purchase_price?: number | null;
 };
 
 export type FridgeItemUpdate = {
@@ -280,6 +286,7 @@ export type FridgeItemUpdate = {
   unit?: string;
   updated_at?: string | null;
   expires_at?: string | null;
+  last_purchase_price?: number | null;
 };
 
 export type DishInsert = {

@@ -1,6 +1,14 @@
 -- Сканер чеков: выполнить вручную в Supabase SQL Editor.
 -- Скрипт не меняет существующие блюда и не запускается приложением автоматически.
 
+alter table public.fridge_items
+  add column if not exists last_purchase_price numeric;
+
+alter table public.fridge_items drop constraint if exists fridge_items_last_purchase_price_check;
+alter table public.fridge_items
+  add constraint fridge_items_last_purchase_price_check
+  check (last_purchase_price is null or last_purchase_price >= 0) not valid;
+
 create table if not exists public.receipts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -169,6 +177,7 @@ declare
   v_name text;
   v_unit text;
   v_amount numeric;
+  v_price numeric;
   v_expires date;
   v_count integer := 0;
 begin
@@ -225,6 +234,7 @@ begin
       v_name := btrim(v_item->>'normalized_name');
       v_unit := v_item->>'fridge_unit';
       v_amount := nullif(v_item->>'fridge_amount', '')::numeric;
+      v_price := nullif(v_item->>'total_price', '')::numeric;
       v_expires := nullif(v_item->>'expires_at', '')::date;
       if v_amount is null or v_amount <= 0 or v_unit not in ('г', 'мл', 'шт') then
         raise exception 'Invalid fridge quantity or unit for %', v_name;
@@ -233,6 +243,7 @@ begin
       -- Существующая клиентская логика сравнивает названия без учёта регистра.
       update public.fridge_items
       set amount = amount + v_amount,
+          last_purchase_price = coalesce(v_price, last_purchase_price),
           expires_at = case
             when expires_at is null then v_expires
             when v_expires is null then expires_at
@@ -247,10 +258,11 @@ begin
       );
 
       if not found then
-        insert into public.fridge_items(name, amount, unit, expires_at)
-        values (v_name, v_amount, v_unit, v_expires)
+        insert into public.fridge_items(name, amount, unit, expires_at, last_purchase_price)
+        values (v_name, v_amount, v_unit, v_expires, v_price)
         on conflict (name, unit) do update
         set amount = public.fridge_items.amount + excluded.amount,
+            last_purchase_price = coalesce(excluded.last_purchase_price, public.fridge_items.last_purchase_price),
             expires_at = case
               when public.fridge_items.expires_at is null then excluded.expires_at
               when excluded.expires_at is null then public.fridge_items.expires_at
@@ -310,6 +322,13 @@ select
   to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null as rpc_ready,
   exists (
     select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'fridge_items'
+      and column_name = 'last_purchase_price'
+  ) as fridge_price_ready,
+  exists (
+    select 1
     from pg_constraint c
     join pg_class t on t.oid = c.conrelid
     join pg_namespace n on n.oid = t.relnamespace
@@ -343,6 +362,13 @@ select
     and to_regclass('public.receipt_items') is not null
     and to_regclass('public.product_aliases') is not null
     and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null
+    and exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'fridge_items'
+        and column_name = 'last_purchase_price'
+    )
     and exists (
       select 1
       from pg_constraint c

@@ -9,6 +9,7 @@ import { supabaseProjectRef } from '../lib/supabase';
 import type { FridgeItem, ProductAlias, Receipt, ReceiptItem, ReceiptSource, Unit } from '../lib/types';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Badge, Button, Card, Field, Input, Select, Textarea } from '../components/ui';
 
 const STORES: ReceiptStore[] = ['Пятёрочка', 'В1', 'Перекрёсток', 'ДА!', 'Другой магазин'];
@@ -42,6 +43,7 @@ export default function ReceiptScan() {
   const [pdfWithoutText, setPdfWithoutText] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Receipt | null>(null);
 
   const reloadHistory = async () => setHistory(await api.fetchReceipts());
 
@@ -217,14 +219,17 @@ export default function ReceiptScan() {
     }
   };
 
-  const deleteDraft = async (receipt: Receipt) => {
+  const deleteHistoryReceipt = async (receipt: Receipt) => {
+    setBusy(true);
     try {
-      await api.deleteReceiptDraft(receipt.id);
+      await api.deleteReceipt(receipt.id);
       setHistory((current) => current.filter((item) => item.id !== receipt.id));
       if (historyReceipt?.id === receipt.id) setHistoryReceipt(null);
-      toast.show('Черновик удалён.', 'info');
+      toast.show('Чек удалён из истории. Продукты остались в холодильнике.', 'info');
     } catch (caught) {
       toast.show(errorMessage(caught), 'error');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -283,10 +288,11 @@ export default function ReceiptScan() {
                   <input className="mt-1 size-5 accent-terra-500" type="checkbox" checked={item.includeInFridge} onChange={(event) => updateItem(index, { includeInFridge: event.target.checked })} />
                   <span className="min-w-0 flex-1"><span className="block break-words text-xs text-ink-muted">{item.rawName}</span><span className="mt-1 block text-xs text-ink-soft">Цена: {money(item.totalPrice)}</span></span>
                 </label>
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_8rem_6rem]">
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_8rem_6rem_8rem]">
                   <Field label="Продукт" htmlFor={`item-name-${index}`}><Input id={`item-name-${index}`} value={item.normalizedName} disabled={!item.includeInFridge} onChange={(event) => updateItem(index, { normalizedName: event.target.value })} /></Field>
                   <Field label="Количество" htmlFor={`item-amount-${index}`}><Input id={`item-amount-${index}`} type="number" min="0.001" step="any" value={item.fridgeAmount ?? ''} disabled={!item.includeInFridge} onChange={(event) => updateItem(index, { fridgeAmount: event.target.value ? Number(event.target.value) : null })} /></Field>
                   <Field label="Единица" htmlFor={`item-unit-${index}`}><Select id={`item-unit-${index}`} value={item.fridgeUnit ?? ''} disabled={!item.includeInFridge} onChange={(event) => updateItem(index, { fridgeUnit: event.target.value as Unit })}><option value="" disabled>—</option><option>г</option><option>мл</option><option>шт</option></Select></Field>
+                  <Field label="Цена, ₽" htmlFor={`item-price-${index}`}><Input id={`item-price-${index}`} type="number" min="0" step="0.01" value={item.totalPrice ?? ''} disabled={!item.includeInFridge} onChange={(event) => updateItem(index, { totalPrice: event.target.value ? Number(event.target.value) : null })} /></Field>
                 </div>
                 {item.needsReview && item.includeInFridge && <p className="mt-2 text-xs font-semibold text-amber-800">Проверьте название, количество и единицу.</p>}
               </article>
@@ -327,7 +333,7 @@ export default function ReceiptScan() {
                 <span className="block text-xs text-ink-soft">{new Date(receipt.purchasedAt ?? receipt.createdAt).toLocaleDateString('ru-RU')} · {money(receipt.totalAmount)} · {receipt.itemCount ?? 0} поз.</span>
               </button>
               <Badge tone={receipt.status === 'imported' ? 'ok' : 'warn'}>{receipt.status === 'imported' ? 'Импортирован' : 'Черновик'}</Badge>
-              {receipt.status === 'draft' && <button aria-label={`Удалить черновик ${receipt.store ?? ''}`} className="rounded-full p-2 text-red-700 hover:bg-red-50" onClick={() => void deleteDraft(receipt)}><Trash2 className="size-4" /></button>}
+              <button disabled={busy} aria-label={`Удалить чек ${receipt.store ?? ''}`} className="rounded-full p-2 text-red-700 hover:bg-red-50 disabled:opacity-45" onClick={() => setDeleteTarget(receipt)}><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>
@@ -339,6 +345,22 @@ export default function ReceiptScan() {
           {!historyItems.length && <p className="text-sm text-ink-soft">Позиции не найдены.</p>}
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Удалить чек из истории?"
+        description="Чек и его позиции будут удалены без возможности восстановления. Уже добавленные продукты останутся в холодильнике."
+        busy={busy}
+        actions={[
+          { label: 'Удалить чек', value: 'delete', variant: 'danger' },
+          { label: 'Отмена', value: 'cancel', variant: 'ghost' }
+        ]}
+        onResolve={(value) => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (value === 'delete' && target) void deleteHistoryReceipt(target);
+        }}
+      />
     </div>
   );
 }
