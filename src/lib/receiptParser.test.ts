@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SYNTHETIC_RECEIPTS } from './receiptFixtures';
+import { PYATEROCHKA_COLUMN_OCR, SYNTHETIC_RECEIPTS } from './receiptFixtures';
 import { calculateFridgeAmount, matchReceiptItem, normalizeReceiptProduct } from './receiptMatcher';
-import { detectReceiptStore, extractPackage, parseReceipt, receiptKey, receiptNameKey } from './receiptParser';
+import { cleanReceiptProductName, detectReceiptStore, extractPackage, parseReceipt, receiptKey, receiptNameKey } from './receiptParser';
 
 describe('парсер синтетических чеков', () => {
   it('определяет магазины расширяемыми правилами', () => {
@@ -61,6 +61,36 @@ describe('парсер синтетических чеков', () => {
   it('не выдумывает количество при повреждённом OCR', () => {
     const parsed = parseReceipt('НЕИЗВЕСТНЫЙ ПРОДУКТ 12O,ОО');
     expect(parsed.items).toEqual([]);
+  });
+
+  it('разбирает колоночный чек Пятёрочки и OCR-варианты единиц', () => {
+    const parsed = parseReceipt(PYATEROCHKA_COLUMN_OCR);
+    expect(parsed.items).toHaveLength(6);
+
+    const matched = parsed.items.map((item) => matchReceiptItem(item, [], []));
+    expect(matched[0]).toMatchObject({
+      normalizedName: 'KOP.KoH.AC.M/T шок.др. л/ор.',
+      fridgeAmount: 190,
+      fridgeUnit: 'г',
+      needsReview: true
+    });
+    expect(matched[1]).toMatchObject({
+      normalizedName: 'M&Ms Драже с арахисом',
+      fridgeAmount: 130,
+      fridgeUnit: 'г'
+    });
+    expect(matched[3]).toMatchObject({ fridgeAmount: 722, fridgeUnit: 'г' });
+    expect(matched[4]).toMatchObject({ fridgeAmount: 285, fridgeUnit: 'г' });
+    expect(matched[5]).toMatchObject({ normalizedName: 'Томаты сливовидные красные', fridgeAmount: null, fridgeUnit: null });
+  });
+
+  it('оставляет в названии только продукт, без артикула, фасовки и цен', () => {
+    expect(cleanReceiptProductName('3350632 KOP.KoH.AC.M/T шок.др. л/ор. 190г ,299.00 14.95'))
+      .toBe('KOP.KoH.AC.M/T шок.др. л/ор.');
+    expect(cleanReceiptProductName('3386336 M8Ms Драже с арахисом 130r 00 4.95'))
+      .toBe('M&Ms Драже с арахисом');
+    expect(cleanReceiptProductName('3191300 ТЕНД.Филе кур.охл.подл. кг'))
+      .toBe('ТЕНД.Филе кур.охл.подл.');
   });
 });
 

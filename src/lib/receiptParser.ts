@@ -40,6 +40,23 @@ const STORE_RULES: Array<{ store: ReceiptStore; patterns: RegExp[] }> = [
   { store: 'ДА!', patterns: [/(?:^|\s)да!(?:\s|$)/im, /магазин\s+да\b/i] }
 ];
 
+// Tesseract часто смешивает кириллицу и латиницу: «130г» → «130r», «1кг» → «1Kr».
+const OCR_UNIT_PATTERN = '(?:кг|kг|кr|kr|kg|мл|mл|ml|mji|шт|шt|г|r|g|л|l)';
+
+function normalizeOcrUnit(token: string): 'кг' | 'г' | 'л' | 'мл' | 'шт' | null {
+  const unit = token.toLocaleLowerCase('ru').replace(/\s/g, '');
+  if (['кг', 'kг', 'кr', 'kr', 'kg'].includes(unit)) return 'кг';
+  if (['мл', 'mл', 'ml', 'mji'].includes(unit)) return 'мл';
+  if (['шт', 'шt'].includes(unit)) return 'шт';
+  if (['г', 'r', 'g'].includes(unit)) return 'г';
+  if (['л', 'l'].includes(unit)) return 'л';
+  return null;
+}
+
+function hasKilogramMarker(value: string): boolean {
+  return new RegExp(`(?:^|\\s)[‘'"“]?(?:кг|kг|кr|kr|kg)(?:\\s*\\d)?(?=\\s|[.,;:*)/\\-]|$)`, 'i').test(value);
+}
+
 function cleanLine(line: string): string {
   return line.replace(/[|]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -69,15 +86,32 @@ export function receiptNameKey(value: string): string {
 }
 
 export function extractPackage(name: string): { amount: number | null; unit: Unit | null } {
-  const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(кг|г|л|мл|шт)(?:\b|$)/gi)];
+  const matches = [...name.matchAll(new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(${OCR_UNIT_PATTERN})(?=\\s|[.,;:*)/\\-]|$)`, 'gi'))];
   const match = matches.at(-1);
   if (!match) return { amount: null, unit: null };
   const value = number(match[1]);
-  const token = match[2].toLocaleLowerCase('ru');
-  if (value === null) return { amount: null, unit: null };
+  const token = normalizeOcrUnit(match[2]);
+  if (value === null || token === null) return { amount: null, unit: null };
   if (token === 'кг') return { amount: value * 1000, unit: 'г' };
   if (token === 'л') return { amount: value * 1000, unit: 'мл' };
   return { amount: value, unit: token as Unit };
+}
+
+/** Убирает артикул, фасовку, количество и ценовые колонки, сохраняя само название. */
+export function cleanReceiptProductName(value: string): string {
+  let name = value.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  name = name.replace(/^[^a-zа-я0-9]*\d{5,14}\s+/i, '');
+  // Всё от первой денежной колонки справа от названия — метаданные чека.
+  name = name.replace(/\s*[,_.;:]?\s*\d+[.,]\d{2}(?:\s|$).*$/i, '');
+  name = name.replace(new RegExp(`\\s+\\d+(?:[.,]\\d+)?\\s*${OCR_UNIT_PATTERN}(?:\\s+\\d{1,2})?\\s*$`, 'i'), '');
+  // Весовые товары часто заканчиваются базой цены «кг»; OCR иногда добавляет одну цифру-шум.
+  name = name.replace(new RegExp(`\\s+[‘'"“]?(?:кг|kг|кr|kr|kg)(?:\\s*\\d)?\\s*$`, 'i'), '');
+  name = name.replace(/\s+[*xх×]\s*\d+(?:[.,]\d+)?\s*$/i, '');
+  return name
+    .replace(/\bM8Ms\b/gi, 'M&Ms')
+    .replace(/^[,.;:_-]+|[,;:_-]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function parseFiscal(text: string, label: string): string | null {
@@ -124,6 +158,12 @@ function parsePricedLine(line: string): PriceParts | null {
   let receiptUnit: string | null = null;
   let unitPrice: number | null = null;
 
+  const corruptedStarQuantity = line.match(/["'“]\s*5?(0[.,]\d{3})(?=\D|$)/);
+  const starredQuantity = line.match(/[*xх×]\s*(\d+(?:[.,]\d+)?)(?=\D|$)/i);
+  const weightQuantity = line.match(/(?:^|\s)(0?[.,]\d{3})(?=\D|$)/);
+  const detectedQuantity = corruptedStarQuantity?.[1] ?? starredQuantity?.[1] ?? weightQuantity?.[1];
+  if (detectedQuantity) quantity = number(detectedQuantity);
+
   const calculation = prefix.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*(кг|г|л|мл|шт|x|х|\*)?\s*[xх*]\s*(\d+[.,]\d{2})\s*$/i)
     ?? prefix.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*(кг|г|л|мл|шт)\s+(\d+[.,]\d{2})\s*$/i);
   if (calculation && calculation.index !== undefined) {
@@ -145,8 +185,13 @@ export function parseReceipt(text: string): ParsedReceipt {
   const lines = text.split(/\r?\n/).map(cleanLine);
   const items: ParsedReceiptItem[] = [];
   let pending: { text: string; lineNumber: number } | null = null;
+  let reachedSummary = false;
 
   lines.forEach((line, index) => {
+    if (/^(скидка\s*:|ckhaka\s*:|округ\s*ление\s*:|подытог\s*:|наличными\s*:|электронными\s*:|итог\s*:|сдача\s*:)/i.test(line)) {
+      reachedSummary = true;
+    }
+    if (reachedSummary) return;
     if (isServiceLine(line)) {
       pending = null;
       return;
@@ -157,18 +202,21 @@ export function parseReceipt(text: string): ParsedReceipt {
       return;
     }
 
-    const rawName = [pending?.text, priced.name].filter(Boolean).join(' ').trim();
+    const inlineName = pending && !/[a-zа-я]{2}/i.test(priced.name) ? '' : priced.name;
+    const rawName = [pending?.text, inlineName].filter(Boolean).join(' ').trim();
     if (!rawName || isServiceLine(rawName) || !/[a-zа-я]{2}/i.test(rawName)) {
       pending = null;
       return;
     }
     const pack = extractPackage(rawName);
+    const receiptUnit = priced.receiptUnit
+      ?? (priced.quantity !== null ? (hasKilogramMarker(rawName) ? 'кг' : 'шт') : null);
     items.push({
       lineNumber: pending?.lineNumber ?? index + 1,
       rawName,
       rawText: pending ? `${pending.text}\n${line}` : line,
       quantity: priced.quantity,
-      receiptUnit: priced.receiptUnit,
+      receiptUnit,
       packageAmount: pack.amount,
       packageUnit: pack.unit,
       unitPrice: priced.unitPrice,

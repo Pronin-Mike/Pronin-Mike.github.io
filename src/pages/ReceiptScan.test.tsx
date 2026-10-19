@@ -5,6 +5,7 @@ import { ToastProvider } from '../components/Toast';
 import ReceiptScan from './ReceiptScan';
 import * as api from '../lib/api';
 import * as ocr from '../lib/receiptOcr';
+import { PYATEROCHKA_COLUMN_OCR } from '../lib/receiptFixtures';
 
 vi.mock('../lib/api', () => ({
   fetchFridge: vi.fn(),
@@ -70,6 +71,24 @@ describe('экран сканирования чека', () => {
     const name = screen.getByLabelText('Продукт') as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'Молоко пастеризованное' } });
     expect(name.value).toBe('Молоко пастеризованное');
+  });
+
+  it('показывает очищенное название и количество из колонок Пятёрочки', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText('…или вставьте текст электронного чека'), {
+      target: { value: PYATEROCHKA_COLUMN_OCR }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Разобрать текст' }));
+
+    const names = await screen.findAllByLabelText('Продукт') as HTMLInputElement[];
+    const amounts = screen.getAllByLabelText('Количество') as HTMLInputElement[];
+    const units = screen.getAllByLabelText('Единица') as HTMLSelectElement[];
+    expect(names[0].value).toBe('KOP.KoH.AC.M/T шок.др. л/ор.');
+    expect(amounts[0].value).toBe('190');
+    expect(units[0].value).toBe('г');
+    expect(names[1].value).toBe('M&Ms Драже с арахисом');
+    expect(amounts[3].value).toBe('722');
+    expect(units[3].value).toBe('г');
   });
 
   it('исключает позицию и блокирует пустой импорт', async () => {

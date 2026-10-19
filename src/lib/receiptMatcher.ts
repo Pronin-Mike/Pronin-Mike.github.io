@@ -1,5 +1,5 @@
 import { normalizeName } from './availability';
-import { receiptNameKey, type ParsedReceiptItem } from './receiptParser';
+import { cleanReceiptProductName, receiptNameKey, type ParsedReceiptItem } from './receiptParser';
 import type { FridgeItem, ProductAlias, ReceiptItem, Unit } from './types';
 
 const PRODUCT_RULES: Array<{ name: string; patterns: RegExp[] }> = [
@@ -14,7 +14,7 @@ const PRODUCT_RULES: Array<{ name: string; patterns: RegExp[] }> = [
   { name: 'Масло растительное', patterns: [/масло\s+(?:подсолн|раст)/i] }
 ];
 
-const NON_FOOD = /(?:^|\s)(пакет|салфет|бумага туал|шампун|мыло|порошок|гель для|батарей|корм для|сигарет)/i;
+const NON_FOOD = /(?:^|\s)(пакет|карта лояльности|салфет|бумага туал|шампун|мыло|порошок|гель для|батарей|корм для|сигарет)/i;
 
 export function normalizeReceiptProduct(rawName: string): string | null {
   const matched = PRODUCT_RULES.find((rule) => rule.patterns.some((pattern) => pattern.test(rawName)));
@@ -65,9 +65,10 @@ export function matchReceiptItem(
     };
   }
 
-  const exact = fridge.find((item) => normalizeName(item.name) === normalizeName(parsed.rawName));
-  const normalized = exact?.name ?? normalizeReceiptProduct(parsed.rawName) ?? parsed.rawName;
-  const status = exact ? 'fridge' : normalized === parsed.rawName ? 'unmatched' : 'normalized';
+  const cleanedName = cleanReceiptProductName(parsed.rawName);
+  const exact = fridge.find((item) => normalizeName(item.name) === normalizeName(cleanedName));
+  const normalized = exact?.name ?? normalizeReceiptProduct(cleanedName) ?? cleanedName;
+  const status = exact ? 'fridge' : normalizeReceiptProduct(cleanedName) ? 'normalized' : 'unmatched';
   return {
     lineNumber: parsed.lineNumber,
     rawName: parsed.rawName,
