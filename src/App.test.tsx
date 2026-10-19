@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 
 vi.mock('./lib/supabase', () => ({
   isSupabaseConfigured: true,
+  supabaseProjectRef: 'test-project',
   supabase: {
     auth: {
       getSession: vi.fn(),

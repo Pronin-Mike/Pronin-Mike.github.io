@@ -229,3 +229,20 @@ $$;
 
 revoke all on function public.import_receipt(uuid, jsonb, jsonb) from public, anon;
 grant execute on function public.import_receipt(uuid, jsonb, jsonb) to authenticated;
+
+-- PostgREST иногда не подхватывает новые таблицы и RPC немедленно.
+select pg_notify('pgrst', 'reload schema');
+
+-- Последняя команда намеренно возвращает строку: в Results должно быть ready = true.
+select
+  current_database() as database_name,
+  to_regclass('public.receipts') is not null as receipts_ready,
+  to_regclass('public.receipt_items') is not null as receipt_items_ready,
+  to_regclass('public.product_aliases') is not null as product_aliases_ready,
+  to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null as rpc_ready,
+  (
+    to_regclass('public.receipts') is not null
+    and to_regclass('public.receipt_items') is not null
+    and to_regclass('public.product_aliases') is not null
+    and to_regprocedure('public.import_receipt(uuid,jsonb,jsonb)') is not null
+  ) as ready;

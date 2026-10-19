@@ -5,6 +5,7 @@ import { planFridgeImport } from '../lib/fridgeImport';
 import { matchReceiptItem } from '../lib/receiptMatcher';
 import { parseReceipt, receiptKey, type ParsedReceipt, type ReceiptStore } from '../lib/receiptParser';
 import { extractPdfText, recognizeImage, recognizePdfPages, type RecognitionProgress } from '../lib/receiptOcr';
+import { supabaseProjectRef } from '../lib/supabase';
 import type { FridgeItem, ProductAlias, Receipt, ReceiptItem, ReceiptSource, Unit } from '../lib/types';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
@@ -296,7 +297,15 @@ export default function ReceiptScan() {
             <p className="font-semibold text-ink">Будет обработано: {items.filter((item) => item.includeInFridge).length}</p>
             <p className="mt-1 text-ink-soft">Новых: {importPlan.counts.added}; количество увеличится: {importPlan.counts.summed}; пропущено: {importPlan.counts.skipped}. Срок годности будет ориентировочным по существующим правилам.</p>
           </div>
-          {storageError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{storageError}</div>}
+          {storageError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p>{storageError}</p>
+              <p className="mt-2">
+                Выполните <code>sql/receipt-scanner.sql</code> именно в проекте Supabase
+                {supabaseProjectRef ? <> <strong>{supabaseProjectRef}</strong></> : null}, дождитесь строки <strong>ready</strong> и обновите страницу без кеша.
+              </p>
+            </div>
+          )}
           {!storageError && invalidSelectedCount > 0 && (
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
               Нельзя добавить: у {invalidSelectedCount} выбранных позиций не заполнены название, количество или единица. Заполните поля либо снимите флажок у этих позиций.

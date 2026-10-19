@@ -17,6 +17,8 @@ const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
  * Если false — приложение покажет экран с инструкцией вместо падения.
  */
 export const isSupabaseConfigured = /^https?:\/\/.+/.test(url) && anonKey.length > 20;
+/** Публичный идентификатор проекта — помогает сверить приложение с SQL Editor. */
+export const supabaseProjectRef = isSupabaseConfigured ? new URL(url).hostname.split('.')[0] : null;
 
 export const supabase = createClient<Database>(
   isSupabaseConfigured ? url : 'https://placeholder.supabase.co',

@@ -55,7 +55,10 @@ function raiseReceipt(context: string, error: { message?: string; code?: string 
     || message.includes('receipt_items')
     || message.includes('receipts')
   ) {
-    throw new Error('Хранилище чеков не настроено. Выполните sql/receipt-scanner.sql в Supabase SQL Editor и обновите страницу.');
+    const reason = [error?.code ? `[${error.code}]` : '', error?.message ?? 'неизвестная ошибка']
+      .filter(Boolean)
+      .join(' ');
+    throw new Error(`Хранилище чеков недоступно. Причина Supabase: ${reason}`);
   }
   raise(context, error);
 }
