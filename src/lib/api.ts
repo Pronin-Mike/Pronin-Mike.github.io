@@ -88,7 +88,9 @@ function toFridgeItem(row: FridgeItemRow): FridgeItem {
     unit: toUnit(row.unit),
     updatedAt: row.updated_at,
     expiresAt: row.expires_at ?? null,
-    lastPurchasePrice: row.last_purchase_price === null ? null : Number(row.last_purchase_price)
+    lastPurchasePrice: row.last_purchase_price === null ? null : Number(row.last_purchase_price),
+    totalCost: Number(row.total_cost ?? 0),
+    pricedAmount: Number(row.priced_amount ?? 0)
   };
 }
 
@@ -194,59 +196,79 @@ export async function fetchFridge(): Promise<FridgeItem[]> {
 export async function addFridgeItem(input: FridgeInput): Promise<FridgeItem> {
   const name = input.name.trim();
   const expiresAt = input.expiresAt ?? defaultExpiresAt(name) ?? null;
-
-  const { data, error } = await supabase
-    .from('fridge_items')
-    .insert({
-      name,
-      amount: round3(input.amount),
-      unit: input.unit,
-      expires_at: expiresAt,
-      last_purchase_price: input.lastPurchasePrice ?? null
-    })
-    .select('*')
-    .single();
-
+  const { data, error } = await supabase.rpc('mutate_fridge_item', {
+    p_item_id: null,
+    p_name: name,
+    p_amount: round3(input.amount),
+    p_unit: input.unit,
+    p_expires_at: expiresAt,
+    p_purchase_cost: input.purchaseCost ?? input.lastPurchasePrice ?? null,
+    p_mode: 'create'
+  });
   if (error || !data) raise('Не удалось добавить продукт', error);
-  return toFridgeItem(data);
+  return toFridgeItem(data as FridgeItemRow);
 }
 
 export async function updateFridgeItem(
   id: string,
   patch: Partial<FridgeInput>
 ): Promise<FridgeItem> {
-  const payload: {
-    name?: string;
-    amount?: number;
-    unit?: string;
-    expires_at?: string | null;
-    last_purchase_price?: number | null;
-  } = {};
-  if (patch.name !== undefined) payload.name = patch.name.trim();
-  if (patch.amount !== undefined) payload.amount = round3(patch.amount);
-  if (patch.unit !== undefined) payload.unit = patch.unit;
-  if (patch.expiresAt !== undefined) payload.expires_at = patch.expiresAt;
-  if (patch.lastPurchasePrice !== undefined) payload.last_purchase_price = patch.lastPurchasePrice;
-
-  const { data, error } = await supabase
-    .from('fridge_items')
-    .update(payload)
-    .eq('id', id)
-    .select('*')
-    .single();
-
+  const current = await supabase.from('fridge_items').select('*').eq('id', id).single();
+  if (current.error || !current.data) raise('Не удалось найти продукт', current.error);
+  const row = toFridgeItem(current.data);
+  const { data, error } = await supabase.rpc('mutate_fridge_item', {
+    p_item_id: id,
+    p_name: patch.name?.trim() ?? row.name,
+    p_amount: round3(patch.amount ?? row.amount),
+    p_unit: patch.unit ?? row.unit,
+    p_expires_at: patch.expiresAt === undefined ? row.expiresAt : patch.expiresAt,
+    p_purchase_cost: patch.purchaseCost === undefined ? null : patch.purchaseCost,
+    p_mode: 'adjust'
+  });
   if (error || !data) raise('Не удалось обновить продукт', error);
-  return toFridgeItem(data);
+  return toFridgeItem(data as FridgeItemRow);
+}
+
+export async function applyFridgePurchase(
+  id: string,
+  input: FridgeInput,
+  mode: 'sum' | 'replace'
+): Promise<FridgeItem> {
+  const { data, error } = await supabase.rpc('mutate_fridge_item', {
+    p_item_id: id,
+    p_name: input.name.trim(),
+    p_amount: round3(input.amount),
+    p_unit: input.unit,
+    p_expires_at: input.expiresAt ?? defaultExpiresAt(input.name) ?? null,
+    p_purchase_cost: input.purchaseCost ?? null,
+    p_mode: mode
+  });
+  if (error || !data) raise('Не удалось обновить покупку', error);
+  return toFridgeItem(data as FridgeItemRow);
 }
 
 export async function deleteFridgeItem(id: string): Promise<void> {
-  const { error } = await supabase.from('fridge_items').delete().eq('id', id);
+  const { error } = await supabase.rpc('delete_fridge_item', { p_item_id: id });
   if (error) raise('Не удалось удалить продукт', error);
 }
 
 export async function clearFridge(): Promise<void> {
-  const { error } = await supabase.from('fridge_items').delete().not('id', 'is', null);
+  const { error } = await supabase.rpc('clear_fridge', {});
   if (error) raise('Не удалось очистить холодильник', error);
+}
+
+export async function wasteProduct(id: string, amount: number): Promise<{ cost: number; costComplete: boolean }> {
+  const { data, error } = await supabase.rpc('waste_product', { p_item_id: id, p_amount: round3(amount) });
+  if (error) raise('Не удалось выбросить продукт', error);
+  const result = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  return { cost: Number(result.cost ?? 0), costComplete: Boolean(result.cost_complete) };
+}
+
+export async function wasteExpiredProducts(): Promise<{ count: number; cost: number }> {
+  const { data, error } = await supabase.rpc('waste_expired_products', {});
+  if (error) raise('Не удалось выбросить просроченные продукты', error);
+  const result = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  return { count: Number(result.count ?? 0), cost: Number(result.cost ?? 0) };
 }
 
 /**
@@ -254,27 +276,20 @@ export async function clearFridge(): Promise<void> {
  * План считается на клиенте: здесь только запись — удаления, изменения, вставки.
  */
 export async function applyFridgeImport(plan: FridgeImportPlan): Promise<FridgeImportCounts> {
-  if (plan.deletes.length) {
-    const { error } = await supabase.from('fridge_items').delete().in('id', plan.deletes);
-    if (error) raise('Не удалось очистить холодильник', error);
-  }
-
-  for (const update of plan.updates) {
-    await updateFridgeItem(update.id, update.patch);
-  }
-
-  if (plan.inserts.length) {
-    const { error } = await supabase.from('fridge_items').insert(
-      plan.inserts.map((item) => ({
-        name: item.name.trim(),
-        amount: round3(item.amount),
-        unit: item.unit,
-        expires_at: item.expiresAt ?? defaultExpiresAt(item.name) ?? null
-      }))
-    );
-    if (error) raise('Не удалось добавить продукты', error);
-  }
-
+  const encode = (item: FridgeInput) => ({
+    name: item.name.trim(), amount: round3(item.amount), unit: item.unit,
+    expires_at: item.expiresAt ?? defaultExpiresAt(item.name) ?? null,
+    total_cost: item.totalCost ?? item.purchaseCost ?? 0,
+    priced_amount: item.pricedAmount ?? (item.purchaseCost == null ? 0 : item.amount),
+    last_purchase_price: item.lastPurchasePrice ?? item.purchaseCost ?? null
+  });
+  const payload = {
+    deletes: plan.deletes,
+    updates: plan.updates.map((entry) => ({ id: entry.id, ...encode(entry.patch as FridgeInput) })),
+    inserts: plan.inserts.map(encode)
+  };
+  const { error } = await supabase.rpc('apply_fridge_import', { p_plan: payload, p_source: 'csv' });
+  if (error) raise('Не удалось импортировать холодильник', error);
   return plan.counts;
 }
 
@@ -615,7 +630,12 @@ function normalizeCookResult(raw: unknown): CookResult {
     })
     .filter((item) => item.name.length > 0);
 
-  return { success: Boolean(record.success), missing };
+  return {
+    success: Boolean(record.success),
+    missing,
+    cost: Number.isFinite(Number(record.cost)) ? Number(record.cost) : undefined,
+    costComplete: typeof record.cost_complete === 'boolean' ? record.cost_complete : undefined
+  };
 }
 
 export async function cookDish(dishId: string): Promise<CookResult> {
@@ -641,7 +661,7 @@ export async function exportBackup(): Promise<BackupFile> {
 
   return {
     app: 'home-cookbook',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     fridge_items: fridge.data ?? [],
     dishes: dishes.data ?? [],
@@ -657,12 +677,6 @@ export async function importBackup(
   file: Partial<BackupFile>,
   knownSectionIds: string[]
 ): Promise<{ fridge: number; dishes: number; skipped: number }> {
-  const clearDishes = await supabase.from('dishes').delete().not('id', 'is', null);
-  if (clearDishes.error) raise('Не удалось очистить блюда', clearDishes.error);
-
-  const clearFridgeResult = await supabase.from('fridge_items').delete().not('id', 'is', null);
-  if (clearFridgeResult.error) raise('Не удалось очистить холодильник', clearFridgeResult.error);
-
   const fridgeRows = (Array.isArray(file.fridge_items) ? file.fridge_items : []).filter(
     (row) =>
       row &&
@@ -673,20 +687,14 @@ export async function importBackup(
       isUnit(row.unit)
   );
 
-  if (fridgeRows.length) {
-    const { error } = await supabase.from('fridge_items').insert(
-      fridgeRows.map((row) => ({
-        name: row.name.trim(),
-        amount: round3(Number(row.amount)),
-        unit: row.unit,
-        expires_at: typeof row.expires_at === 'string' ? row.expires_at : defaultExpiresAt(row.name) ?? null,
-        last_purchase_price: Number.isFinite(Number(row.last_purchase_price))
-          ? Number(row.last_purchase_price)
-          : null
-      }))
-    );
-    if (error) raise('Не удалось загрузить холодильник', error);
-  }
+  const restoredFridge = fridgeRows.map((row) => ({
+      name: row.name.trim(), amount: round3(Number(row.amount)), unit: row.unit,
+      expires_at: typeof row.expires_at === 'string' ? row.expires_at : defaultExpiresAt(row.name) ?? null,
+      last_purchase_price: Number.isFinite(Number(row.last_purchase_price)) ? Number(row.last_purchase_price) : null,
+      total_cost: Number.isFinite(Number(row.total_cost)) && Number(row.total_cost) >= 0 ? Number(row.total_cost) : 0,
+      priced_amount: Number.isFinite(Number(row.priced_amount)) && Number(row.priced_amount) >= 0
+        ? Math.min(Number(row.priced_amount), Number(row.amount)) : 0
+    }));
 
   const ingredientsByDish = new Map<string, DishIngredientRow[]>();
   for (const row of Array.isArray(file.dish_ingredients) ? file.dish_ingredients : []) {
@@ -697,8 +705,8 @@ export async function importBackup(
   }
 
   const knownSections = new Set(knownSectionIds);
-  let dishes = 0;
   let skipped = 0;
+  const restoredDishes: Array<Record<string, unknown>> = [];
 
   for (const row of Array.isArray(file.dishes) ? file.dishes : []) {
     const title = typeof row?.title === 'string' ? row.title.trim() : '';
@@ -706,23 +714,37 @@ export async function importBackup(
       skipped += 1;
       continue;
     }
-
-    try {
-      await createDish({
-        title,
-        sectionId: row.section_id,
-        timeMin: typeof row.time_min === 'number' ? row.time_min : null,
-        steps: Array.isArray(row.steps) ? row.steps.filter((step) => typeof step === 'string') : [],
-        notes: typeof row.notes === 'string' ? row.notes : '',
-        ingredients: normalizeIngredients(ingredientsByDish.get(row.id) ?? [])
-      });
-      dishes += 1;
-    } catch {
+    const ingredients = normalizeIngredients(ingredientsByDish.get(row.id) ?? []);
+    if (ingredients.some((item) => item.amount <= 0)) {
       skipped += 1;
+      continue;
     }
+    restoredDishes.push({
+      title,
+      section_id: row.section_id,
+      time_min: typeof row.time_min === 'number' && Number.isInteger(row.time_min) ? row.time_min : null,
+      steps: Array.isArray(row.steps) ? row.steps.filter((step) => typeof step === 'string') : [],
+      notes: typeof row.notes === 'string' ? row.notes : '',
+      ingredients: ingredients.map((item) => ({
+        name: item.name,
+        amount: item.amount,
+        unit: item.unit,
+        sort_order: item.sortOrder
+      }))
+    });
   }
 
-  return { fridge: fridgeRows.length, dishes, skipped };
+  const { data, error } = await supabase.rpc('restore_backup', {
+    p_fridge: restoredFridge,
+    p_dishes: restoredDishes
+  });
+  if (error) raise('Не удалось атомарно восстановить бэкап', error);
+  const result = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  return {
+    fridge: Number(result.fridge ?? restoredFridge.length),
+    dishes: Number(result.dishes ?? restoredDishes.length),
+    skipped
+  };
 }
 
 /* -------------------------------------------------------------------------- *

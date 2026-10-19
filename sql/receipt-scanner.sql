@@ -1,5 +1,16 @@
 -- Сканер чеков: выполнить вручную в Supabase SQL Editor.
 -- Скрипт не меняет существующие блюда и не запускается приложением автоматически.
+-- После внедрения учёта стоимости используйте миграцию из supabase/migrations:
+-- старые определения import_receipt/normalize_fridge_names ниже не должны перезаписать новые.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'fridge_items' and column_name = 'total_cost'
+  ) then
+    raise exception 'Схема стоимости уже установлена. Не запускайте legacy sql/receipt-scanner.sql повторно.';
+  end if;
+end $$;
 
 alter table public.fridge_items
   add column if not exists last_purchase_price numeric;

@@ -6,6 +6,8 @@ import type { IngredientSuggestion } from '../lib/suggestions';
 import IngredientNameInput from './IngredientNameInput';
 import ShelfLifeBadge from './ShelfLifeBadge';
 import { Button, Input, Select, cn } from './ui';
+import type { CostEstimate } from '../lib/pricing';
+import { formatCost } from '../lib/pricing';
 
 /* ============================================================================
  * IngredientRow.tsx — строка ингредиента: редактируемая и для просмотра.
@@ -84,10 +86,11 @@ export interface IngredientViewRowProps {
   missing?: MissingIngredient;
   /** Продукт в холодильнике просрочен — показываем красный бейдж. */
   expiresAt?: string | null;
+  cost?: CostEstimate;
 }
 
 /** Строка ингредиента в просмотре рецепта: галочка или крестик. */
-export function IngredientViewRow({ ingredient, missing, expiresAt = null }: IngredientViewRowProps) {
+export function IngredientViewRow({ ingredient, missing, expiresAt = null, cost }: IngredientViewRowProps) {
   const ok = !missing;
 
   return (
@@ -107,6 +110,7 @@ export function IngredientViewRow({ ingredient, missing, expiresAt = null }: Ing
       <span className="shrink-0 font-semibold tabular-nums text-ink-soft">
         {formatAmount(ingredient.amount)} {ingredient.unit}
       </span>
+      {cost ? <span className="shrink-0 text-xs font-semibold tabular-nums text-terra-700">{formatCost(cost)}</span> : null}
       {missing ? (
         <span className="w-full text-xs text-honey-700 md:w-auto md:shrink-0">
           {missing.reason === 'absent'

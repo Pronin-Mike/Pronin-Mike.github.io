@@ -20,6 +20,7 @@ import type { FridgeInput, FridgeItem, Unit } from './types';
 import { normalizeName, round3 } from './availability';
 import { defaultExpiresAt } from './shelfLife';
 import { validateFridgeInput } from './validation';
+import { adjustStock } from './pricing';
 
 export type FridgeImportMode = 'merge' | 'sum' | 'replace';
 
@@ -36,6 +37,9 @@ export interface FridgeImportEntry {
   resulting: number;
   /** Срок годности, который получится после импорта. */
   expiresAt: string | null;
+  /** Известная стоимость результата импорта. */
+  totalCost: number;
+  pricedAmount: number;
 }
 
 export interface FridgeImportCounts {
@@ -72,6 +76,12 @@ interface WorkingItem {
   originalExpiresAt: string | null;
   /** Срок годности после импорта. */
   expiresAt: string | null;
+  totalCost: number;
+  pricedAmount: number;
+  lastPurchasePrice: number | null;
+  originalTotalCost: number;
+  originalPricedAmount: number;
+  originalLastPurchasePrice: number | null;
 }
 
 /** Минимальная из двух дат; null не перекрывает дату. */
@@ -103,7 +113,13 @@ export function planFridgeImport(
         originalAmount: item.amount,
         originalUnit: item.unit,
         originalExpiresAt: item.expiresAt,
-        expiresAt: item.expiresAt
+        expiresAt: item.expiresAt,
+        totalCost: item.totalCost ?? 0,
+        pricedAmount: item.pricedAmount ?? 0,
+        lastPurchasePrice: item.lastPurchasePrice ?? null,
+        originalTotalCost: item.totalCost ?? 0,
+        originalPricedAmount: item.pricedAmount ?? 0,
+        originalLastPurchasePrice: item.lastPurchasePrice ?? null
       }));
 
   const findExact = (name: string, unit: Unit) =>
@@ -126,7 +142,9 @@ export function planFridgeImport(
         action: 'invalid',
         note: validation.errors.join(' '),
         resulting: 0,
-        expiresAt: null
+        expiresAt: null,
+        totalCost: 0,
+        pricedAmount: 0
       });
       return;
     }
@@ -136,6 +154,9 @@ export function planFridgeImport(
     // Дата из файла: пусто → null (позже подставим типовой срок).
     const fileExpiresAt = raw.expiresAt ?? null;
     const unit = raw.unit;
+    const hasSnapshotCost = raw.totalCost !== undefined || raw.pricedAmount !== undefined;
+    const incomingTotal = raw.totalCost ?? raw.purchaseCost ?? 0;
+    const incomingPriced = raw.pricedAmount ?? (raw.purchaseCost == null ? 0 : amount);
 
     /* ---------- режим «прибавить» ---------- */
     if (mode === 'sum') {
@@ -143,6 +164,9 @@ export function planFridgeImport(
 
       if (exact) {
         exact.amount = round3(exact.amount + amount);
+        exact.totalCost += incomingTotal;
+        exact.pricedAmount += incomingPriced;
+        if (raw.purchaseCost !== undefined && raw.purchaseCost !== null) exact.lastPurchasePrice = raw.purchaseCost;
         // Складываем количества — оставляем более ранний срок годности.
         exact.expiresAt = minDate(exact.expiresAt, fileExpiresAt) ?? defaultExpiresAt(name, from);
         counts.summed += 1;
@@ -154,7 +178,9 @@ export function planFridgeImport(
           action: 'sum',
           note: '',
           resulting: exact.amount,
-          expiresAt: exact.expiresAt
+          expiresAt: exact.expiresAt,
+          totalCost: exact.totalCost,
+          pricedAmount: exact.pricedAmount
         });
         return;
       }
@@ -172,7 +198,9 @@ export function planFridgeImport(
           action: 'skip',
           note,
           resulting: sameName[0].amount,
-          expiresAt: sameName[0].expiresAt
+          expiresAt: sameName[0].expiresAt,
+          totalCost: sameName[0].totalCost,
+          pricedAmount: sameName[0].pricedAmount
         });
         return;
       }
@@ -187,10 +215,16 @@ export function planFridgeImport(
         originalAmount: 0,
         originalUnit: unit,
         originalExpiresAt: null,
-        expiresAt
+        expiresAt,
+        totalCost: incomingTotal,
+        pricedAmount: incomingPriced,
+        lastPurchasePrice: raw.purchaseCost ?? raw.lastPurchasePrice ?? null,
+        originalTotalCost: 0,
+        originalPricedAmount: 0,
+        originalLastPurchasePrice: null,
       });
       counts.added += 1;
-      entries.push({ row, name, amount, unit, action: 'new', note: '', resulting: amount, expiresAt });
+      entries.push({ row, name, amount, unit, action: 'new', note: '', resulting: amount, expiresAt, totalCost: incomingTotal, pricedAmount: incomingPriced });
       return;
     }
 
@@ -199,6 +233,15 @@ export function planFridgeImport(
 
     if (exact) {
       exact.amount = amount;
+      if (hasSnapshotCost || raw.purchaseCost !== undefined) {
+        exact.totalCost = incomingTotal;
+        exact.pricedAmount = incomingPriced;
+        exact.lastPurchasePrice = raw.purchaseCost ?? raw.lastPurchasePrice ?? exact.lastPurchasePrice;
+      } else {
+        const adjusted = adjustStock({ amount: exact.originalAmount, totalCost: exact.originalTotalCost, pricedAmount: exact.originalPricedAmount }, amount);
+        exact.totalCost = adjusted.totalCost;
+        exact.pricedAmount = adjusted.pricedAmount;
+      }
       // merge: дата из файла перекрывает текущую, пусто — оставляем как было.
       exact.expiresAt = fileExpiresAt ?? exact.expiresAt ?? defaultExpiresAt(name, from);
       counts.updated += 1;
@@ -210,7 +253,9 @@ export function planFridgeImport(
         action: 'update',
         note: '',
         resulting: amount,
-        expiresAt: exact.expiresAt
+        expiresAt: exact.expiresAt,
+        totalCost: exact.totalCost,
+        pricedAmount: exact.pricedAmount
       });
       return;
     }
@@ -223,6 +268,15 @@ export function planFridgeImport(
     if (existingSameName.length === 1) {
       const target = existingSameName[0];
       target.amount = amount;
+      if (hasSnapshotCost || raw.purchaseCost !== undefined) {
+        target.totalCost = incomingTotal;
+        target.pricedAmount = incomingPriced;
+        target.lastPurchasePrice = raw.purchaseCost ?? raw.lastPurchasePrice ?? target.lastPurchasePrice;
+      } else {
+        const adjusted = adjustStock({ amount: target.originalAmount, totalCost: target.originalTotalCost, pricedAmount: target.originalPricedAmount }, amount);
+        target.totalCost = adjusted.totalCost;
+        target.pricedAmount = adjusted.pricedAmount;
+      }
       target.unit = unit;
       target.expiresAt = fileExpiresAt ?? target.expiresAt ?? defaultExpiresAt(name, from);
       counts.updated += 1;
@@ -234,7 +288,9 @@ export function planFridgeImport(
         action: 'update',
         note: `единица изменится: ${target.originalUnit} → ${unit}`,
         resulting: amount,
-        expiresAt: target.expiresAt
+        expiresAt: target.expiresAt,
+        totalCost: target.totalCost,
+        pricedAmount: target.pricedAmount
       });
       return;
     }
@@ -243,7 +299,7 @@ export function planFridgeImport(
       counts.skipped += 1;
       const note = 'в холодильнике несколько позиций с таким названием — поправьте вручную';
       warnings.push(`«${name}» пропущен — ${note}.`);
-      entries.push({ row, name, amount, unit, action: 'skip', note, resulting: 0, expiresAt: null });
+      entries.push({ row, name, amount, unit, action: 'skip', note, resulting: 0, expiresAt: null, totalCost: 0, pricedAmount: 0 });
       return;
     }
 
@@ -257,20 +313,34 @@ export function planFridgeImport(
       originalAmount: 0,
       originalUnit: unit,
       originalExpiresAt: null,
-      expiresAt
+      expiresAt,
+      totalCost: incomingTotal,
+      pricedAmount: incomingPriced,
+      lastPurchasePrice: raw.purchaseCost ?? raw.lastPurchasePrice ?? null,
+      originalTotalCost: 0,
+      originalPricedAmount: 0,
+      originalLastPurchasePrice: null,
     });
     counts.added += 1;
-    entries.push({ row, name, amount, unit, action: 'new', note: '', resulting: amount, expiresAt });
+    entries.push({ row, name, amount, unit, action: 'new', note: '', resulting: amount, expiresAt, totalCost: incomingTotal, pricedAmount: incomingPriced });
   });
 
   const inserts: FridgeInput[] = working
     .filter((item) => item.origin === 'new')
-    .map((item) => ({
-      name: item.name,
-      amount: round3(item.amount),
-      unit: item.unit,
-      expiresAt: item.expiresAt
-    }));
+    .map((item) => {
+      const base: FridgeInput = {
+        name: item.name,
+        amount: round3(item.amount),
+        unit: item.unit,
+        expiresAt: item.expiresAt
+      };
+      if (item.totalCost !== 0 || item.pricedAmount !== 0 || item.lastPurchasePrice !== null) {
+        base.totalCost = item.totalCost;
+        base.pricedAmount = item.pricedAmount;
+        base.lastPurchasePrice = item.lastPurchasePrice;
+      }
+      return base;
+    });
 
   const updates = working
     .filter(
@@ -278,17 +348,28 @@ export function planFridgeImport(
         item.origin === 'existing' &&
         (round3(item.amount) !== round3(item.originalAmount) ||
           item.unit !== item.originalUnit ||
-          item.expiresAt !== item.originalExpiresAt)
+          item.expiresAt !== item.originalExpiresAt ||
+          item.totalCost !== item.originalTotalCost ||
+          item.pricedAmount !== item.originalPricedAmount ||
+          item.lastPurchasePrice !== item.originalLastPurchasePrice)
     )
-    .map((item) => ({
-      id: item.id,
-      patch: {
+    .map((item) => {
+      const patch: Partial<FridgeInput> = {
         name: item.name,
         amount: round3(item.amount),
         unit: item.unit,
         expiresAt: item.expiresAt
+      };
+      if (
+        item.totalCost !== 0 || item.pricedAmount !== 0 || item.lastPurchasePrice !== null
+        || item.originalTotalCost !== 0 || item.originalPricedAmount !== 0 || item.originalLastPurchasePrice !== null
+      ) {
+        patch.totalCost = item.totalCost;
+        patch.pricedAmount = item.pricedAmount;
+        patch.lastPurchasePrice = item.lastPurchasePrice;
       }
-    }));
+      return { id: item.id, patch };
+    });
 
   const deletes = mode === 'replace' ? current.map((item) => item.id) : [];
   const totalAfter = mode === 'replace'

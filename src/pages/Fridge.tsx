@@ -1,18 +1,20 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Eraser, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { Eraser, PackageX, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Modal from '../components/Modal';
 import ShelfLifeBadge from '../components/ShelfLifeBadge';
 import { SkeletonRows } from '../components/Loading';
 import { useToast } from '../components/Toast';
 import { Button, Card, cn, Field, Input, Select } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
-import { normalizeName, round3 } from '../lib/availability';
+import { normalizeName } from '../lib/availability';
 import { formatAmount, productWord } from '../lib/format';
 import { planFridgeNameNormalization } from '../lib/receiptMatcher';
 import { ETERNAL_PRODUCTS, defaultExpiresAt, getExpiryStatus } from '../lib/shelfLife';
 import { validateFridgeInput } from '../lib/validation';
+import { formatCost, formatMoney, formatStockUnitCost } from '../lib/pricing';
 import type { ExpiryStatus } from '../lib/shelfLife';
 import type { FridgeInput, FridgeItem, Unit } from '../lib/types';
 
@@ -27,18 +29,15 @@ interface FormState {
   amount: string;
   unit: Unit;
   expiresAt: string;
+  cost: string;
 }
 
-const EMPTY_FORM: FormState = { name: '', amount: '', unit: 'г', expiresAt: '' };
+const EMPTY_FORM: FormState = { name: '', amount: '', unit: 'г', expiresAt: '', cost: '' };
 
 type SortMode = 'name' | 'expiry';
 
 /** Быстрые чипы «+Nд» рядом с полем срока годности. */
 const QUICK_DAYS = [1, 3, 7, 14, 30];
-
-function money(value: number): string {
-  return `${value.toFixed(2)} ₽`;
-}
 
 /** Порядок групп при сортировке по сроку: просроченное — вверху. */
 const STATUS_ORDER: Record<ExpiryStatus, number> = {
@@ -79,6 +78,8 @@ export default function Fridge() {
   const [clearOpen, setClearOpen] = useState(false);
   const [pastDateOpen, setPastDateOpen] = useState(false);
   const [normalizeOpen, setNormalizeOpen] = useState(false);
+  const [wasteTarget, setWasteTarget] = useState<FridgeItem | null>(null);
+  const [wasteAmount, setWasteAmount] = useState('');
 
   /** Пользователь правил дату руками — автоподстановка больше не срабатывает. */
   const dateTouched = useRef(false);
@@ -166,7 +167,8 @@ export default function Fridge() {
     name: form.name,
     amount: Number(form.amount.replace(',', '.')),
     unit: form.unit,
-    expiresAt: form.expiresAt || null
+    expiresAt: form.expiresAt || null,
+    purchaseCost: form.cost.trim() === '' ? null : Number(form.cost.replace(',', '.'))
   });
 
   const save = async (input: FridgeInput) => {
@@ -216,7 +218,7 @@ export default function Fridge() {
 
     if (value === 'replace') {
       await run(
-        () => api.updateFridgeItem(pending.existing.id, { amount: pending.input.amount, expiresAt: pending.input.expiresAt }),
+        () => api.applyFridgePurchase(pending.existing.id, pending.input, 'replace'),
         `Количество «${pending.existing.name}» заменено.`
       );
       return;
@@ -230,10 +232,7 @@ export default function Fridge() {
 
     await run(
       () =>
-        api.updateFridgeItem(pending.existing.id, {
-          amount: round3(pending.existing.amount + pending.input.amount),
-          expiresAt: mergedExpiresAt
-        }),
+        api.applyFridgePurchase(pending.existing.id, { ...pending.input, expiresAt: mergedExpiresAt }, 'sum'),
       `К «${pending.existing.name}» добавлено ${formatAmount(pending.input.amount)} ${pending.input.unit}.`
     );
   };
@@ -244,7 +243,8 @@ export default function Fridge() {
       name: item.name,
       amount: String(item.amount),
       unit: item.unit,
-      expiresAt: item.expiresAt ?? ''
+      expiresAt: item.expiresAt ?? '',
+      cost: ''
     });
     // Дату уже показали из базы — автоподстановка не должна её перебивать.
     dateTouched.current = Boolean(item.expiresAt);
@@ -261,13 +261,36 @@ export default function Fridge() {
   );
   const normalizationGroups = useMemo(() => planFridgeNameNormalization(fridge), [fridge]);
   const normalizationRows = normalizationGroups.reduce((total, group) => total + group.ids.length, 0);
+  const knownInventoryCost = fridge.reduce((sum, item) => sum + (item.totalCost ?? 0), 0);
+  const inventoryCostStatus = fridge.length > 0 && fridge.every((item) => (item.pricedAmount ?? 0) >= item.amount)
+    ? 'exact'
+    : knownInventoryCost > 0 ? 'partial' : 'unknown';
+
+  const openWaste = (item: FridgeItem) => {
+    setWasteTarget(item);
+    setWasteAmount(String(item.amount));
+  };
+
+  const confirmWaste = async () => {
+    const target = wasteTarget;
+    const amount = Number(wasteAmount.replace(',', '.'));
+    if (!target || !Number.isFinite(amount) || amount <= 0 || amount > target.amount) {
+      toast.show(`Количество должно быть от 0 до ${formatAmount(target?.amount ?? 0)}.`, 'error');
+      return;
+    }
+    setWasteTarget(null);
+    await run(async () => {
+      const result = await api.wasteProduct(target.id, amount);
+      toast.show(`Потери: ${result.costComplete ? '' : '~'}${formatMoney(result.cost)}.`, 'info');
+    }, `«${target.name}» списан как потеря.`);
+  };
 
   return (
     <div className="flex flex-col gap-4 animate-rise-in">
       <header>
         <h1 className="font-display text-3xl text-ink">Холодильник</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          {loading ? 'Загружаем…' : `${productWord(fridge.length)} · сравнение по названию и единице измерения`}
+          {loading ? 'Загружаем…' : `${productWord(fridge.length)} · известных остатков: ${formatCost({ knownCost: knownInventoryCost, status: inventoryCostStatus })}`}
         </p>
       </header>
 
@@ -276,7 +299,7 @@ export default function Fridge() {
           {editingId ? 'Изменить продукт' : 'Добавить продукт'}
         </h2>
 
-        <form className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]" onSubmit={(event) => void handleSubmit(event)}>
+        <form className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1.2fr_auto]" onSubmit={(event) => void handleSubmit(event)}>
           <Field label="Название" htmlFor="fridge-name">
             <Input
               id="fridge-name"
@@ -284,6 +307,21 @@ export default function Fridge() {
               placeholder="мука"
               autoComplete="off"
               onChange={(event) => handleNameChange(event.target.value)}
+            />
+          </Field>
+
+          <Field
+            label={editingId ? 'Новая стоимость остатка, ₽' : 'Стоимость покупки, ₽'}
+            htmlFor="fridge-cost"
+            hint={editingId ? 'Оставьте пустым, чтобы сохранить текущую оценку' : 'Необязательно'}
+          >
+            <Input
+              id="fridge-cost"
+              value={form.cost}
+              inputMode="decimal"
+              placeholder="150"
+              autoComplete="off"
+              onChange={(event) => setForm((prev) => ({ ...prev, cost: event.target.value }))}
             />
           </Field>
 
@@ -322,7 +360,7 @@ export default function Fridge() {
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-2 sm:col-span-4">
+          <div className="flex flex-col gap-2 sm:col-span-5">
             <Field label="Срок годности" htmlFor="fridge-expires" hint="Можно оставить пустым — тогда срок не отслеживается.">
               <Input
                 id="fridge-expires"
@@ -470,11 +508,10 @@ export default function Fridge() {
               <span className="shrink-0 rounded-full bg-terra-50 px-3 py-1 text-sm font-bold tabular-nums text-terra-700">
                 {formatAmount(item.amount)} {item.unit}
               </span>
-              {item.lastPurchasePrice != null ? (
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-soft" title="Цена в последнем импортированном чеке">
-                  {money(item.lastPurchasePrice)}
-                </span>
-              ) : null}
+              <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink-soft" title="Известная стоимость остатка и средняя цена">
+                <span className="block">{formatCost({ knownCost: item.totalCost ?? 0, status: (item.pricedAmount ?? 0) >= item.amount ? 'exact' : (item.totalCost ?? 0) > 0 ? 'partial' : 'unknown' })}</span>
+                <span className="block text-xs font-normal text-ink-muted">{formatStockUnitCost(item)}</span>
+              </span>
               <ShelfLifeBadge expiresAt={item.expiresAt} />
               <span className="flex shrink-0 gap-1.5">
                 <Button
@@ -486,6 +523,16 @@ export default function Fridge() {
                   onClick={() => startEdit(item)}
                 >
                   <Pencil className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-9 !min-h-9 !px-0 text-honey-700"
+                  aria-label={`Выбросить «${item.name}»`}
+                  disabled={busy}
+                  onClick={() => openWaste(item)}
+                >
+                  <PackageX className="size-4" aria-hidden="true" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -545,6 +592,23 @@ export default function Fridge() {
         ]}
         onResolve={(value) => void resolveDuplicate(value)}
       />
+
+      <Modal
+        open={wasteTarget !== null}
+        title={wasteTarget ? `Выбросить «${wasteTarget.name}»` : 'Выбросить продукт'}
+        size="sm"
+        onClose={() => setWasteTarget(null)}
+        footer={(
+          <>
+            <Button variant="danger" disabled={busy} onClick={() => void confirmWaste()}>Выбросить</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setWasteTarget(null)}>Отмена</Button>
+          </>
+        )}
+      >
+        <Field label={`Количество, ${wasteTarget?.unit ?? ''}`} htmlFor="waste-amount" hint={`Доступно: ${formatAmount(wasteTarget?.amount ?? 0)}`}>
+          <Input id="waste-amount" inputMode="decimal" value={wasteAmount} onChange={(event) => setWasteAmount(event.target.value)} />
+        </Field>
+      </Modal>
 
       <ConfirmDialog
         open={pastDateOpen}

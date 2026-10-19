@@ -105,6 +105,27 @@ describe('planFridgeImport: режим sum', () => {
       { name: 'сыр', amount: 300, unit: 'г', expiresAt: '2026-10-22' }
     ]);
   });
+
+  it('складывает известную стоимость и оставляет покупку без цены неизвестной', () => {
+    const priced: FridgeItem[] = [
+      { ...current[0], totalCost: 60, pricedAmount: 500 }
+    ];
+    const plan = planFridgeImport(
+      [{ name: 'мука', amount: 500, unit: 'г', purchaseCost: null }],
+      priced,
+      'sum',
+      FROM
+    );
+    expect(plan.updates[0].patch).toMatchObject({ amount: 1000, totalCost: 60, pricedAmount: 500 });
+
+    const paid = planFridgeImport(
+      [{ name: 'мука', amount: 500, unit: 'г', purchaseCost: 90 }],
+      priced,
+      'sum',
+      FROM
+    );
+    expect(paid.updates[0].patch).toMatchObject({ amount: 1000, totalCost: 150, pricedAmount: 1000 });
+  });
 });
 
 describe('planFridgeImport: режим replace', () => {

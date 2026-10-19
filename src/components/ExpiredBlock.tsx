@@ -69,7 +69,7 @@ export default function ExpiredBlock() {
               className="text-berry-500"
               disabled={busy}
               aria-label={`Выбросить «${item.name}»`}
-              onClick={() => void run(() => api.deleteFridgeItem(item.id), `«${item.name}» выброшен.`)}
+              onClick={() => void run(() => api.wasteProduct(item.id, item.amount), `«${item.name}» выброшен.`)}
             >
               Выбросить
             </Button>
@@ -89,9 +89,7 @@ export default function ExpiredBlock() {
         onResolve={(value) => {
           setClearOpen(false);
           if (value !== 'clear') return;
-          void run(async () => {
-            for (const item of expired) await api.deleteFridgeItem(item.id);
-          }, 'Просроченные продукты выброшены.');
+          void run(() => api.wasteExpiredProducts(), 'Просроченные продукты выброшены.');
         }}
       />
     </Card>

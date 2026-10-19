@@ -11,6 +11,7 @@ import * as api from '../lib/api';
 import { checkDish, fridgeKey, missingText, normalizeName } from '../lib/availability';
 import { formatTime, sectionEmoji } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
+import { dishCost, formatCost, ingredientCost } from '../lib/pricing';
 
 /* ============================================================================
  * DishDetail.tsx — просмотр рецепта и кнопка «Приготовить»
@@ -32,6 +33,7 @@ export default function DishDetail() {
     [dish, fridgeIndex]
   );
   const section = sections.find((item) => item.id === (dish?.sectionId ?? sectionId));
+  const cost = useMemo(() => dish ? dishCost(dish, fridgeIndex) : null, [dish, fridgeIndex]);
 
   const handleCook = async () => {
     if (!dish) return;
@@ -147,6 +149,7 @@ export default function DishDetail() {
                   ? '✅ Всё есть'
                   : `🛒 Не хватает: ${availability.missingText}`}
               </Badge>
+              {cost ? <Badge tone="neutral">Стоимость: {formatCost(cost)}</Badge> : null}
             </div>
           </div>
         </div>
@@ -172,6 +175,7 @@ export default function DishDetail() {
                 ingredient={ingredient}
                 missing={missing}
                 expiresAt={expiresAt}
+                cost={ingredientCost(ingredient, fridgeIndex)}
               />
             );
           })}

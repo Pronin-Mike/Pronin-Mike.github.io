@@ -17,6 +17,8 @@ export const DISH_CSV_COLUMNS = ['title', 'section', 'ingredients', 'time', 'ste
 export const FRIDGE_CSV_COLUMNS = ['name', 'amount', 'unit'] as const;
 /** Колонка срока годности — необязательная: файл без неё читается как раньше. */
 export const FRIDGE_EXPIRES_COLUMN = 'expires_at';
+export const FRIDGE_TOTAL_COST_COLUMN = 'total_cost';
+export const FRIDGE_PRICED_AMOUNT_COLUMN = 'priced_amount';
 
 export interface CsvError {
   row: number;
@@ -110,7 +112,14 @@ const FRIDGE_HEADER_ALIASES: Record<string, string> = {
   'срокгодности': FRIDGE_EXPIRES_COLUMN,
   'срок': FRIDGE_EXPIRES_COLUMN,
   'годендо': FRIDGE_EXPIRES_COLUMN,
-  'дата': FRIDGE_EXPIRES_COLUMN
+  'дата': FRIDGE_EXPIRES_COLUMN,
+  total_cost: FRIDGE_TOTAL_COST_COLUMN,
+  totalcost: FRIDGE_TOTAL_COST_COLUMN,
+  'стоимость': FRIDGE_TOTAL_COST_COLUMN,
+  'общаястоимость': FRIDGE_TOTAL_COST_COLUMN,
+  priced_amount: FRIDGE_PRICED_AMOUNT_COLUMN,
+  pricedamount: FRIDGE_PRICED_AMOUNT_COLUMN,
+  'оцененноеколичество': FRIDGE_PRICED_AMOUNT_COLUMN,
 };
 
 /**
@@ -421,6 +430,10 @@ function parseFridgeRecord(record: Record<string, string>): { item: FridgeInput 
   const amount = parseAmount(record.amount);
   const unit = parseUnit(record.unit);
   const expires = parseFridgeDate(record[FRIDGE_EXPIRES_COLUMN]);
+  const totalCostText = cleanText(record[FRIDGE_TOTAL_COST_COLUMN]);
+  const pricedAmountText = cleanText(record[FRIDGE_PRICED_AMOUNT_COLUMN]);
+  const totalCost = totalCostText ? parseAmount(totalCostText) : undefined;
+  const pricedAmount = pricedAmountText ? parseAmount(pricedAmountText) : undefined;
   const errors: string[] = [];
 
   if (!name) errors.push('Укажите название продукта.');
@@ -432,10 +445,26 @@ function parseFridgeRecord(record: Record<string, string>): { item: FridgeInput 
   if (!unit) errors.push('Единица измерения — только г, мл или шт.');
 
   if (expires === 'invalid') errors.push('Срок годности — в формате ГГГГ-ММ-ДД.');
+  if (totalCost !== undefined && (!Number.isFinite(totalCost) || totalCost < 0)) {
+    errors.push('Стоимость должна быть неотрицательным числом.');
+  }
+  if (pricedAmount !== undefined && (!Number.isFinite(pricedAmount) || pricedAmount < 0 || pricedAmount > amount)) {
+    errors.push('Оценённое количество должно быть от нуля до общего количества.');
+  }
+  if (pricedAmount === 0 && (totalCost ?? 0) !== 0) {
+    errors.push('При нулевом оценённом количестве стоимость должна быть нулевой.');
+  }
 
   if (errors.length || !unit) return { item: null, errors };
 
-  return { item: { name, amount, unit, expiresAt: expires === 'invalid' ? null : expires }, errors: [] };
+  return {
+    item: {
+      name, amount, unit, expiresAt: expires === 'invalid' ? null : expires,
+      totalCost,
+      pricedAmount: pricedAmount ?? (totalCost !== undefined ? amount : undefined)
+    },
+    errors: []
+  };
 }
 
 /**
@@ -500,10 +529,10 @@ export function parseFridgeCSV(text: string): FridgeCsvParseResult {
 
 /** @returns {string} CSV холодильника (для экспорта и шаблона). */
 export function toFridgeCSV(items: FridgeInput[]): string {
-  const lines = [[...FRIDGE_CSV_COLUMNS, FRIDGE_EXPIRES_COLUMN].join(',')];
+  const lines = [[...FRIDGE_CSV_COLUMNS, FRIDGE_EXPIRES_COLUMN, FRIDGE_TOTAL_COST_COLUMN, FRIDGE_PRICED_AMOUNT_COLUMN].join(',')];
   items.forEach((item) => {
     const name = /[",;\n]/.test(item.name) ? `"${item.name.replace(/"/g, '""')}"` : item.name;
-    lines.push(`${name},${item.amount},${item.unit},${item.expiresAt ?? ''}`);
+    lines.push(`${name},${item.amount},${item.unit},${item.expiresAt ?? ''},${item.totalCost ?? item.purchaseCost ?? ''},${item.pricedAmount ?? ''}`);
   });
   // BOM, чтобы Excel открыл файл в UTF-8
   return `\uFEFF${lines.join('\r\n')}\r\n`;

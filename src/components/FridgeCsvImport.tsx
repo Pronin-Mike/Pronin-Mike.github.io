@@ -120,7 +120,9 @@ export default function FridgeCsvImport() {
           name: item.name,
           amount: item.amount,
           unit: item.unit,
-          expiresAt: item.expiresAt
+          expiresAt: item.expiresAt,
+          totalCost: item.totalCost,
+          pricedAmount: item.pricedAmount
         }))
       ),
       'text/csv'
@@ -136,8 +138,10 @@ export default function FridgeCsvImport() {
       </h2>
       <p className="text-sm leading-relaxed text-ink-soft">
         Колонки: <code className="rounded bg-cream-100 px-1.5 py-0.5">name,amount,unit</code> и
-        необязательная <code className="rounded bg-cream-100 px-1.5 py-0.5">expires_at</code> (срок
-        годности, <code className="rounded bg-cream-100 px-1.5 py-0.5">ГГГГ-ММ-ДД</code>) — по одной
+        необязательные <code className="rounded bg-cream-100 px-1.5 py-0.5">expires_at</code>,{' '}
+        <code className="rounded bg-cream-100 px-1.5 py-0.5">total_cost</code> и{' '}
+        <code className="rounded bg-cream-100 px-1.5 py-0.5">priced_amount</code>. Срок задаётся как{' '}
+        <code className="rounded bg-cream-100 px-1.5 py-0.5">ГГГГ-ММ-ДД</code> — по одной
         строке на продукт, например{' '}
         <code className="rounded bg-cream-100 px-1.5 py-0.5">творог,500,г,2026-10-15</code>.
         Единица измерения — только <code className="rounded bg-cream-100 px-1.5 py-0.5">г</code>,{' '}
@@ -300,6 +304,7 @@ export default function FridgeCsvImport() {
                       <th className="px-3 py-2">Количество</th>
                       <th className="px-3 py-2">Ед.</th>
                       <th className="px-3 py-2">Срок годности</th>
+                      <th className="px-3 py-2">Известная стоимость</th>
                       <th className="px-3 py-2">Что будет</th>
                     </tr>
                   </thead>
@@ -316,6 +321,9 @@ export default function FridgeCsvImport() {
                           <td className="px-3 py-2 text-ink-soft">{entry.unit}</td>
                           <td className="px-3 py-2 tabular-nums whitespace-nowrap text-ink-soft">
                             {entry.expiresAt ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums whitespace-nowrap text-ink-soft">
+                            {entry.pricedAmount > 0 ? `${entry.totalCost.toFixed(2)} ₽` : 'Н/Д'}
                           </td>
                           <td className="px-3 py-2">
                             <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold', style.className)}>

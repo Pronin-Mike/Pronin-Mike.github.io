@@ -30,8 +30,11 @@ vi.mock('./lib/api', () => ({
   deleteDish: vi.fn(),
   addFridgeItem: vi.fn(),
   updateFridgeItem: vi.fn(),
+  applyFridgePurchase: vi.fn(),
   deleteFridgeItem: vi.fn(),
   clearFridge: vi.fn(),
+  wasteProduct: vi.fn(),
+  wasteExpiredProducts: vi.fn(),
   normalizeFridgeNames: vi.fn(),
   applyFridgeImport: vi.fn(),
   exportBackup: vi.fn(),
@@ -200,6 +203,13 @@ beforeEach(() => {
     fridge.length = 0;
     fridge.push(...rest);
   });
+  vi.mocked(api.wasteProduct).mockImplementation(async (id, amount) => {
+    const existing = fridge.find((item) => item.id === id);
+    if (existing && amount >= existing.amount) fridge = fridge.filter((item) => item.id !== id);
+    else if (existing) existing.amount -= amount;
+    return { cost: 0, costComplete: false };
+  });
+  vi.mocked(api.wasteExpiredProducts).mockResolvedValue({ count: 0, cost: 0 });
 });
 
 afterEach(() => {
@@ -509,6 +519,15 @@ describe('Импорт холодильника из CSV', () => {
 });
 
 describe('Сроки годности', () => {
+  it('передаёт общую стоимость ручной покупки', async () => {
+    await openFridgePage();
+    fillFridgeForm('бананы', '500');
+    fireEvent.change(screen.getByLabelText(/Стоимость покупки, ₽/), { target: { value: '150,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.addFridgeItem).mock.calls[0][0].purchaseCost).toBe(150.5);
+  });
+
   it('подставляет типовой срок при вводе названия и показывает бейдж', async () => {
     await openFridgePage();
 
@@ -564,7 +583,7 @@ describe('Сроки годности', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Выбросить «кефир»' }));
 
-    await waitFor(() => expect(api.deleteFridgeItem).toHaveBeenCalledWith('p1'));
+    await waitFor(() => expect(api.wasteProduct).toHaveBeenCalledWith('p1', 500));
     await waitFor(() => expect(screen.queryByText('кефир', { selector: 'span' })).toBeNull());
 
     // В холодильнике продукт тоже исчез.
@@ -572,5 +591,17 @@ describe('Сроки годности', () => {
     await screen.findByRole('heading', { name: 'Холодильник' });
     expect(fridgeRow('кефир')).toBeNull();
     expect(screen.getByText('яйца')).toBeTruthy();
+  });
+
+  it('позволяет выбросить только часть остатка', async () => {
+    fridge = [
+      { id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null, totalCost: 200, pricedAmount: 1000 }
+    ];
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'Выбросить «бананы»' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Выбросить «бананы»' });
+    fireEvent.change(within(dialog).getByLabelText(/Количество, г/), { target: { value: '300' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Выбросить' }));
+    await waitFor(() => expect(api.wasteProduct).toHaveBeenCalledWith('p1', 300));
   });
 });

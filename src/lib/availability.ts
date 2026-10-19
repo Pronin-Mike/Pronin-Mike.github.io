@@ -46,7 +46,12 @@ export function indexFridge(fridge: FridgeItem[]): Map<string, FridgeItem> {
     const key = fridgeKey(item.name, item.unit);
     const existing = index.get(key);
     if (existing) {
-      index.set(key, { ...existing, amount: round3(existing.amount + item.amount) });
+      index.set(key, {
+        ...existing,
+        amount: round3(existing.amount + item.amount),
+        totalCost: (existing.totalCost ?? 0) + (item.totalCost ?? 0),
+        pricedAmount: (existing.pricedAmount ?? 0) + (item.pricedAmount ?? 0)
+      });
     } else {
       index.set(key, item);
     }

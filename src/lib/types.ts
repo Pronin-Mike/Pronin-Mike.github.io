@@ -55,6 +55,10 @@ export interface FridgeItem {
   expiresAt: string | null;
   /** Общая цена позиции в последнем импортированном чеке. */
   lastPurchasePrice?: number | null;
+  /** Известная стоимость текущего остатка. */
+  totalCost?: number;
+  /** Часть текущего количества, для которой цена известна (в тех же единицах). */
+  pricedAmount?: number;
 }
 
 /** Данные формы блюда (создание и редактирование). */
@@ -75,6 +79,30 @@ export interface FridgeInput {
   expiresAt?: string | null;
   /** Для ручного ввода необязательно; при импорте чека заполняется автоматически. */
   lastPurchasePrice?: number | null;
+  /** Общая стоимость добавляемого количества; null означает «цена неизвестна». */
+  purchaseCost?: number | null;
+  /** Поля снимка для CSV/JSON и атомарного массового импорта. */
+  totalCost?: number;
+  pricedAmount?: number;
+}
+
+export type MovementType = 'purchase' | 'cook' | 'waste' | 'adjustment';
+export type MovementSource = 'manual' | 'receipt' | 'csv' | 'json' | 'cook' | 'waste' | 'system';
+
+export interface ProductMovement {
+  id: string;
+  operationId: string;
+  fridgeItemId: string | null;
+  productName: string;
+  unit: Unit;
+  movementType: MovementType;
+  source: MovementSource;
+  amountDelta: number;
+  costDelta: number;
+  pricedAmountDelta: number;
+  receiptId: string | null;
+  dishId: string | null;
+  createdAt: string;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -159,6 +187,8 @@ export interface Availability {
 export interface CookResult {
   success: boolean;
   missing: MissingIngredient[];
+  cost?: number;
+  costComplete?: boolean;
   /** Названия просроченных ингредиентов, которые всё же были списаны. */
   expiredWarning?: string[];
 }
@@ -185,6 +215,28 @@ export type FridgeItemRow = {
   updated_at: string | null;
   expires_at: string | null;
   last_purchase_price: number | null;
+  total_cost: number;
+  priced_amount: number;
+};
+
+export type ProductMovementRow = {
+  id: string;
+  operation_id: string;
+  fridge_item_id: string | null;
+  product_name: string;
+  unit: string;
+  movement_type: string;
+  source: string;
+  amount_delta: number;
+  cost_delta: number;
+  priced_amount_delta: number;
+  amount_after: number;
+  total_cost_after: number;
+  priced_amount_after: number;
+  receipt_id: string | null;
+  dish_id: string | null;
+  created_by: string | null;
+  created_at: string;
 };
 
 export type DishRow = {
@@ -281,6 +333,8 @@ export type FridgeItemInsert = {
   updated_at?: string | null;
   expires_at?: string | null;
   last_purchase_price?: number | null;
+  total_cost?: number;
+  priced_amount?: number;
 };
 
 export type FridgeItemUpdate = {
@@ -290,6 +344,8 @@ export type FridgeItemUpdate = {
   updated_at?: string | null;
   expires_at?: string | null;
   last_purchase_price?: number | null;
+  total_cost?: number;
+  priced_amount?: number;
 };
 
 export type DishInsert = {
@@ -362,6 +418,7 @@ export type Database = {
       receipts: TableDefinition<ReceiptRow, Partial<ReceiptRow> & Pick<ReceiptRow, 'user_id' | 'source' | 'status'>, Partial<ReceiptRow>>;
       receipt_items: TableDefinition<ReceiptItemRow, Omit<ReceiptItemRow, 'id' | 'created_at'>, Partial<ReceiptItemRow>>;
       product_aliases: TableDefinition<ProductAliasRow, Omit<ProductAliasRow, 'id' | 'created_at' | 'updated_at'>, Partial<ProductAliasRow>>;
+      product_movements: TableDefinition<ProductMovementRow, never, never>;
     };
     Views: {
       dishes_full: ViewDefinition<DishFullRow>;
@@ -379,6 +436,24 @@ export type Database = {
         Args: { p_groups: unknown };
         Returns: unknown;
       };
+      mutate_fridge_item: {
+        Args: {
+          p_item_id: string | null;
+          p_name: string;
+          p_amount: number;
+          p_unit: string;
+          p_expires_at: string | null;
+          p_purchase_cost: number | null;
+          p_mode: 'create' | 'sum' | 'replace' | 'adjust';
+        };
+        Returns: unknown;
+      };
+      delete_fridge_item: { Args: { p_item_id: string }; Returns: undefined };
+      clear_fridge: { Args: Record<string, never>; Returns: number };
+      waste_product: { Args: { p_item_id: string; p_amount: number }; Returns: unknown };
+      waste_expired_products: { Args: Record<string, never>; Returns: unknown };
+      apply_fridge_import: { Args: { p_plan: unknown; p_source?: 'csv' | 'json' }; Returns: unknown };
+      restore_backup: { Args: { p_fridge: unknown; p_dishes: unknown }; Returns: unknown };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

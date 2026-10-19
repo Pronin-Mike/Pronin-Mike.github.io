@@ -68,5 +68,23 @@ export function validateFridgeInput(input: FridgeInput): ValidationResult {
 
   if (!isUnit(input.unit)) errors.push('Единица измерения — только г, мл или шт.');
 
+  if (input.purchaseCost !== undefined && input.purchaseCost !== null) {
+    if (!Number.isFinite(input.purchaseCost)) errors.push('Укажите стоимость числом.');
+    else if (input.purchaseCost < 0) errors.push('Стоимость не может быть отрицательной.');
+    else if (input.purchaseCost > 1_000_000_000) errors.push('Слишком большая стоимость.');
+  }
+
+  if (input.totalCost !== undefined && (!Number.isFinite(input.totalCost) || input.totalCost < 0)) {
+    errors.push('Общая стоимость должна быть неотрицательным числом.');
+  }
+  if (input.pricedAmount !== undefined && (
+    !Number.isFinite(input.pricedAmount) || input.pricedAmount < 0 || input.pricedAmount > input.amount
+  )) {
+    errors.push('Оценённое количество должно быть от нуля до общего количества.');
+  }
+  if (input.pricedAmount === 0 && (input.totalCost ?? 0) !== 0) {
+    errors.push('Без оценённого количества известная стоимость должна быть равна нулю.');
+  }
+
   return { ok: errors.length === 0, errors };
 }

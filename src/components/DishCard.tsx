@@ -4,6 +4,7 @@ import type { Availability, Dish, FridgeItem } from '../lib/types';
 import { fridgeKey } from '../lib/availability';
 import { formatAmount, formatTime, sectionEmoji } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
+import { dishCost, formatCost } from '../lib/pricing';
 import type { DishExpiryStatus } from '../lib/dishExpiry';
 import { Button, cn } from './ui';
 
@@ -47,6 +48,7 @@ export default function DishCard({
           .map((item) => item.name)
       )]
     : [];
+  const cost = fridgeIndex ? dishCost(dish, fridgeIndex) : { knownCost: 0, status: 'unknown' as const };
 
   return (
     <article
@@ -79,6 +81,7 @@ export default function DishCard({
               </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
                 <span>{dish.ingredients.length} ингр.</span>
+                <span className="font-semibold text-terra-700">{formatCost(cost)}</span>
                 {dish.timeMin ? (
                   <span className="inline-flex items-center gap-1">
                     <Clock className="size-3.5" aria-hidden="true" />

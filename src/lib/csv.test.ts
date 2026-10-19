@@ -204,4 +204,21 @@ describe('parseFridgeCSV', () => {
     expect(result.items[0].item.name).toBe('мука, пшеничная');
     expect(result.items[1].item.amount).toBe(10);
   });
+
+  it('читает и экспортирует полную и частично известную стоимость', () => {
+    const parsed = parseFridgeCSV('name,amount,unit,total_cost,priced_amount\nмука,1000,г,60,500');
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.items[0].item).toMatchObject({ totalCost: 60, pricedAmount: 500 });
+
+    const roundTrip = parseFridgeCSV(toFridgeCSV([
+      { name: 'мука', amount: 1000, unit: 'г', totalCost: 60, pricedAmount: 500 }
+    ]));
+    expect(roundTrip.items[0].item).toMatchObject({ totalCost: 60, pricedAmount: 500 });
+  });
+
+  it('отвергает стоимость без оценённого количества', () => {
+    const result = parseFridgeCSV('name,amount,unit,total_cost,priced_amount\nмука,1000,г,60,0');
+    expect(result.items).toHaveLength(0);
+    expect(result.errors[0].message).toMatch(/нулевом оценённом/);
+  });
 });
