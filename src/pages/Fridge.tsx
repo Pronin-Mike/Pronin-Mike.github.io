@@ -5,7 +5,6 @@ import {
   PackageOpen,
   Pencil,
   Plus,
-  Search,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -128,18 +127,8 @@ export default function Fridge() {
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const expiringCount = useMemo(() => fridge.filter((item) => {
-    const status = getExpiryStatus(item.expiresAt);
-    return status === 'soon' || status === 'today' || status === 'expired';
-  }).length, [fridge]);
-
   const normalizationGroups = useMemo(() => planFridgeNameNormalization(fridge), [fridge]);
   const normalizationRows = normalizationGroups.reduce((total, group) => total + group.ids.length, 0);
-  const knownInventoryCost = fridge.reduce((sum, item) => sum + (item.totalCost ?? 0), 0);
-  const inventoryCostStatus = fridge.length > 0 && fridge.every((item) => (item.pricedAmount ?? 0) >= item.amount)
-    ? 'exact'
-    : knownInventoryCost > 0 ? 'partial' : 'unknown';
-
   const visible = useMemo(() => {
     const needle = normalizeName(search);
     let list = needle ? fridge.filter((item) => normalizeName(item.name).includes(needle)) : fridge;
@@ -405,28 +394,25 @@ export default function Fridge() {
 
       <section aria-label="Сводка запасов" className="grid grid-cols-3 gap-2 sm:gap-4">
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
-          <span className="block truncate text-xs font-semibold text-ink-muted">Позиций</span>
+          <span className="block truncate text-xs font-semibold text-ink-muted">Продукты</span>
           <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.length}</strong>
         </Card>
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
-          <span className="block truncate text-xs font-semibold text-ink-muted">Требуют внимания</span>
-          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : expiringCount}</strong>
+          <span className="block text-xs font-semibold leading-tight text-ink-muted">Истекают</span>
+          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.filter((item) => ['soon', 'today'].includes(getExpiryStatus(item.expiresAt))).length}</strong>
         </Card>
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
-          <span className="block truncate text-xs font-semibold text-ink-muted">Стоимость</span>
-          <strong className="mt-1 block truncate text-lg font-extrabold text-ink sm:text-2xl">
-            {loading ? '—' : formatCost({ knownCost: knownInventoryCost, status: inventoryCostStatus })}
-          </strong>
+          <span className="block truncate text-xs font-semibold text-ink-muted">Просрочено</span>
+          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.filter((item) => getExpiryStatus(item.expiresAt) === 'expired').length}</strong>
         </Card>
       </section>
 
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:flex-nowrap">
         <div className="min-w-0 flex-1 basis-full sm:basis-auto">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
             <Input
               value={search}
-              className="pl-9 pr-11"
+              className="pr-11"
               placeholder="Поиск продукта"
               aria-label="Найти продукт"
               onChange={(event) => setSearch(event.target.value)}
@@ -509,7 +495,7 @@ export default function Fridge() {
       <Modal
         open={addOpen}
         title="Добавить продукт"
-        size="md"
+        size="add"
         onClose={() => setAddOpen(false)}
         initialFocusRef={addNameRef}
         footer={(

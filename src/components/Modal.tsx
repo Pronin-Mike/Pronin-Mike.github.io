@@ -9,7 +9,7 @@ export interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'add';
   closeOnBackdrop?: boolean;
   /** Возврат к предыдущему экрану внутри того же модального сценария. */
   onBack?: () => void;
@@ -20,6 +20,7 @@ export interface ModalProps {
 const SIZES = {
   sm: 'md:max-w-md',
   md: 'md:max-w-xl',
+  add: 'md:max-w-[540px]',
   lg: 'md:max-w-3xl'
 } as const;
 
@@ -140,7 +141,7 @@ export default function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         className={cn(
-          'flex max-h-[calc(100dvh-env(safe-area-inset-top,0px))] w-full flex-col rounded-t-2xl bg-cream-100 shadow-sheet outline-none md:max-h-[min(92dvh,56rem)] md:rounded-2xl',
+          'flex max-h-[calc(100dvh-env(safe-area-inset-top,0px))] w-full flex-col overflow-hidden rounded-t-2xl bg-cream-100 shadow-sheet outline-none md:max-h-[min(92dvh,56rem)] md:rounded-2xl',
           'animate-sheet-in',
           SIZES[size]
         )}
