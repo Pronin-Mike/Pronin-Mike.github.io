@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Мой холодильник — макет продуктов</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#f7f8f6;--surface:#fff;--ink:#252b28;--muted:#68736c;--line:#e1e6e1;--sage:#53745d;--sage-light:#dde9de;--sage-dark:#365a3e;--radius:16px;--shadow:0 10px 35px rgba(30,44,34,.055)}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 Manrope,Inter,system-ui,sans-serif}button,input,select{font:inherit}button{cursor:pointer}
+    .top{height:76px;background:#fff;border-bottom:1px solid var(--line)}.top-inner{max-width:1260px;height:100%;margin:auto;padding:0 30px;display:flex;align-items:center;gap:22px}.brand{display:flex;align-items:center;gap:11px;font-weight:800}.mark{width:39px;height:39px;border-radius:12px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:19px}.brand small{display:block;color:var(--muted);font-size:10px;font-weight:500}.nav{margin-left:auto;display:flex;gap:5px}.nav a{padding:11px 15px;border-radius:11px;color:var(--muted);font-weight:700;text-decoration:none}.nav a.active{background:var(--sage-light);color:var(--sage-dark)}
+    main{max-width:1260px;margin:auto;padding:37px 30px 110px}.heading{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:25px}.heading h1{margin:0;font-size:31px;line-height:1.2;letter-spacing:-1.2px}.heading p{margin:7px 0 0;color:var(--muted);font-size:13px}.primary{border:1px solid var(--sage);border-radius:11px;background:var(--sage);color:#fff;padding:11px 16px;font-weight:800}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:23px}.stat{min-height:117px;padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.stat span{color:var(--muted);font-size:12px;font-weight:700}.stat strong{display:block;margin-top:4px;font-size:31px;line-height:1.12;letter-spacing:-1px}
+    .tools{display:flex;align-items:center;gap:10px;margin-bottom:15px}.search{flex:1;min-width:180px}.field{width:100%;min-height:44px;border:1px solid #d8e2d9;border-radius:10px;background:#fff;color:var(--ink);padding:11px 13px}.tabs{display:flex;gap:7px}.tabs button{padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);font-weight:800}.tabs .active{border-color:var(--sage-light);background:var(--sage-light);color:var(--sage-dark)}select{max-width:165px}
+    .products{overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:16px}.row{display:flex;align-items:center;gap:10px;padding:14px 17px;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}.name{flex:1;min-width:0}.name strong{display:block;font-size:13px}.name small{display:block;margin-top:3px;color:var(--muted);font-size:11px}.amount{min-width:82px;text-align:right;font-weight:800}.actions{display:flex;gap:7px}.soft,.outline{padding:7px 11px;border-radius:9px;font-size:12px;font-weight:800}.soft{border:1px solid var(--sage-light);background:var(--sage-light);color:var(--sage-dark)}.outline{border:1px solid #f0cece;background:#fff;color:#ae4242}.more{width:36px;height:36px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--muted);font-weight:800}
+    @media(max-width:720px){.top{height:62px}.top-inner{padding:0 15px}.nav{display:none}main{padding:25px 15px 105px}.heading{align-items:flex-start;margin-bottom:20px}.heading h1{font-size:26px}.heading p{max-width:150px}.heading .primary{padding:10px;font-size:12px}.stats{gap:8px}.stat{min-height:100px;padding:13px 10px}.stat span{font-size:10px;line-height:1.2}.stat strong{font-size:25px}.tools{flex-wrap:wrap}.search{flex-basis:100%}.tabs{flex:1;min-width:0;overflow:auto}.tabs button{white-space:nowrap;flex-shrink:0}.tools select{width:150px}.row{gap:6px;padding:12px 9px}.name strong{font-size:12px}.name small{font-size:10px}.amount{min-width:60px;font-size:11px}.actions{gap:4px}.soft,.outline{padding:7px 8px;font-size:11px}.more{width:36px}.products{border-radius:14px}}
+  </style>
+</head>
+<body>
+  <header class="top"><div class="top-inner"><div class="brand"><span class="mark">▣</span><span>Мой холодильник<small>личные запасы</small></span></div><nav class="nav"><a href="#">Главная</a><a class="active" href="#">Продукты</a><a href="#">Рецепты</a><a href="#">Чек</a><a href="#">Импорт</a></nav></div></header>
+  <main>
+    <section class="heading"><div><h1>Мои продукты</h1><p>6 позиций в холодильнике</p></div><button class="primary">＋ Добавить продукт</button></section>
+    <section class="stats"><article class="stat"><span>Продукты</span><strong>6</strong></article><article class="stat"><span>Истекают</span><strong>2</strong></article><article class="stat"><span>Просрочено</span><strong>1</strong></article></section>
+    <section class="tools"><input class="field search" placeholder="Поиск продукта" aria-label="Поиск продукта"><div class="tabs"><button class="active">Все</button><button>Требуют внимания</button></div><select class="field" aria-label="Сортировка"><option>По названию</option><option>По сроку</option></select></section>
+    <ul class="products">
+      <li class="row"><div class="name"><strong>Вермишель</strong><small>Срок не указан</small></div><div class="amount">20 г</div><div class="actions"><button class="soft">Использовать</button><button class="more">···</button></div></li>
+      <li class="row"><div class="name"><strong>Горох</strong><small>Срок не указан</small></div><div class="amount">500 г</div><div class="actions"><button class="soft">Использовать</button><button class="more">···</button></div></li>
+      <li class="row"><div class="name"><strong>Грудка куриная</strong><small>Годен до 21 октября</small></div><div class="amount">1000 г</div><div class="actions"><button class="soft">Использовать</button><button class="more">···</button></div></li>
+      <li class="row"><div class="name"><strong>Молоко</strong><small>Истекает завтра</small></div><div class="amount">500 мл</div><div class="actions"><button class="soft">Использовать</button><button class="more">···</button></div></li>
+      <li class="row"><div class="name"><strong>Печень куриная</strong><small>Просрочено на 1 день</small></div><div class="amount">1000 г</div><div class="actions"><button class="outline">Выбросить</button><button class="more">···</button></div></li>
+    </ul>
+  </main>
+</body>
+</html>

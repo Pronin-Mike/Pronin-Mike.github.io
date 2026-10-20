@@ -395,15 +395,15 @@ export default function Fridge() {
       <section aria-label="Сводка запасов" className="grid grid-cols-3 gap-2 sm:gap-4">
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block truncate text-xs font-semibold text-ink-muted">Продукты</span>
-          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.length}</strong>
+          <strong className="mt-[13px] block text-[35px] font-extrabold leading-[1.12] tracking-[-2px] tabular-nums text-ink min-[366px]:text-[40px] sm:text-[48px]">{loading ? '—' : fridge.length}</strong>
         </Card>
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block text-xs font-semibold leading-tight text-ink-muted">Истекают</span>
-          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.filter((item) => ['soon', 'today'].includes(getExpiryStatus(item.expiresAt))).length}</strong>
+          <strong className="mt-[13px] block text-[35px] font-extrabold leading-[1.12] tracking-[-2px] tabular-nums text-ink min-[366px]:text-[40px] sm:text-[48px]">{loading ? '—' : fridge.filter((item) => ['soon', 'today'].includes(getExpiryStatus(item.expiresAt))).length}</strong>
         </Card>
         <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block truncate text-xs font-semibold text-ink-muted">Просрочено</span>
-          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.filter((item) => getExpiryStatus(item.expiresAt) === 'expired').length}</strong>
+          <strong className="mt-[13px] block text-[35px] font-extrabold leading-[1.12] tracking-[-2px] tabular-nums text-ink min-[366px]:text-[40px] sm:text-[48px]">{loading ? '—' : fridge.filter((item) => getExpiryStatus(item.expiresAt) === 'expired').length}</strong>
         </Card>
       </section>
 
