@@ -4,62 +4,62 @@ export default {
   theme: {
     extend: {
       colors: {
-        // тёплый бежевый фон
+        // Sage & Graphite. Старые имена сохранены как совместимые алиасы,
+        // чтобы дизайн менялся без переписывания работающих экранов целиком.
         cream: {
-          50: '#fdfbf8',
-          100: '#faf7f2',
-          200: '#f4ede3',
-          300: '#e9ddcc',
-          400: '#dbc9b2'
+          50: '#ffffff',
+          100: '#f7f8f6',
+          200: '#eef1ed',
+          300: '#e1e6e1',
+          400: '#cbd3cc'
         },
-        // терракота — основной акцент
+        // основной шалфейный акцент
         terra: {
-          50: '#fdf2ec',
-          100: '#f9dfd2',
-          200: '#f2c3ad',
-          300: '#e6a181',
-          400: '#d4795a',
-          500: '#c4623f',
-          600: '#a94f31',
-          700: '#8a3f27'
+          50: '#f1f6f1',
+          100: '#dde9de',
+          200: '#c2d7c5',
+          300: '#9fbea5',
+          400: '#75977e',
+          500: '#53745d',
+          600: '#45634f',
+          700: '#385140'
         },
-        // олива — «можно готовить»
         olive: {
-          50: '#f3f6ec',
-          100: '#e5edd9',
-          200: '#cbdbb5',
-          300: '#a9c489',
-          400: '#87a865',
-          500: '#6b8f4e',
-          600: '#557340',
-          700: '#435b33'
+          50: '#e8f2ea',
+          100: '#d6e9da',
+          200: '#b8d8c0',
+          300: '#91c09f',
+          400: '#62a277',
+          500: '#34704d',
+          600: '#2d6042',
+          700: '#285239'
         },
-        // мёд — предупреждения
         honey: {
-          50: '#fdf6e6',
-          100: '#f9e9c4',
-          200: '#f4d894',
-          300: '#edc465',
-          400: '#d9a53a',
-          500: '#b5801f',
-          700: '#7c5a11',
-          800: '#5f440c'
+          50: '#fff2db',
+          100: '#ffe6b8',
+          200: '#f7d18a',
+          300: '#e8b557',
+          400: '#c98b20',
+          500: '#aa7212',
+          700: '#98630c',
+          800: '#744b08'
         },
         berry: {
-          50: '#fbebef',
-          200: '#f3c3cd',
-          500: '#c2445f',
-          700: '#8e2f44'
+          50: '#fce9e9',
+          200: '#f1bcbc',
+          500: '#ae4242',
+          700: '#873333'
         },
         ink: {
-          DEFAULT: '#3b322c',
-          soft: '#6a5d54',
-          muted: '#9a8c81'
+          DEFAULT: '#252b28',
+          soft: '#4f5a54',
+          muted: '#68736c'
         }
       },
       fontFamily: {
         sans: [
-          'Inter',
+          'Manrope Variable',
+          'Manrope',
           'system-ui',
           '-apple-system',
           'Segoe UI',
@@ -68,12 +68,12 @@ export default {
           'Arial',
           'sans-serif'
         ],
-        display: ['Georgia', 'Iowan Old Style', 'Times New Roman', 'serif']
+        display: ['Manrope Variable', 'Manrope', 'system-ui', 'sans-serif']
       },
       boxShadow: {
-        soft: '0 1px 2px rgba(80, 60, 45, 0.05), 0 12px 26px -20px rgba(80, 60, 45, 0.40)',
-        lift: '0 6px 18px -6px rgba(80, 60, 45, 0.22)',
-        sheet: '0 -18px 60px -24px rgba(60, 44, 32, 0.45)'
+        soft: '0 1px 2px rgba(37, 43, 40, 0.05), 0 12px 26px -20px rgba(37, 43, 40, 0.28)',
+        lift: '0 8px 22px -10px rgba(37, 43, 40, 0.24)',
+        sheet: '0 -18px 60px -24px rgba(37, 43, 40, 0.38)'
       },
       keyframes: {
         'fade-in': {

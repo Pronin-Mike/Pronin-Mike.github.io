@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Eraser, PackageX, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -72,7 +72,7 @@ export default function Fridge() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
-  const [onlyExpiring, setOnlyExpiring] = useState(false);
+  const [onlyExpiring, setOnlyExpiring] = useState(searchParams.get('expiring') === '1');
   const [duplicate, setDuplicate] = useState<{ existing: FridgeItem; input: FridgeInput } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FridgeItem | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
@@ -84,6 +84,13 @@ export default function Fridge() {
   /** Пользователь правил дату руками — автоподстановка больше не срабатывает. */
   const dateTouched = useRef(false);
   const [dateInput, setDateInput] = useState<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('add') !== '1') return;
+    const input = document.getElementById('fridge-name');
+    input?.scrollIntoView({ block: 'center' });
+    input?.focus({ preventScroll: true });
+  }, [searchParams]);
 
   // ?sort=expiry — переход из блока «Скоро истекает».
   const sort: SortMode = searchParams.get('sort') === 'expiry' ? 'expiry' : 'name';

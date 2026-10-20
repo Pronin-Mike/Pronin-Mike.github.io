@@ -64,7 +64,7 @@ export default function DishDetail() {
     try {
       await api.deleteDish(dish.id);
       toast.show(`«${dish.title}» удалено.`, 'info');
-      navigate(`/?section=${dish.sectionId}`, { replace: true });
+      navigate(`/recipes?section=${dish.sectionId}`, { replace: true });
     } catch (caught) {
       toast.show(caught instanceof Error ? caught.message : 'Не удалось удалить блюдо', 'error');
     } finally {
@@ -74,7 +74,7 @@ export default function DishDetail() {
 
   const backLink = (
     <Link
-      to={`/?section=${dish?.sectionId ?? sectionId}`}
+      to={`/recipes?section=${dish?.sectionId ?? sectionId}`}
       className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-ink-soft transition hover:text-terra-600"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
@@ -115,7 +115,7 @@ export default function DishDetail() {
           <SectionTitle>Блюдо не найдено</SectionTitle>
           <p className="text-sm text-ink-soft">Возможно, оно было удалено.</p>
           <Link
-            to="/"
+            to="/recipes"
             className="inline-flex min-h-11 items-center rounded-full bg-terra-500 px-4 font-semibold text-white"
           >
             К списку рецептов

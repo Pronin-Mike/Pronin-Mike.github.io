@@ -39,7 +39,7 @@ export default function Recipes() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
-  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [onlyAvailable, setOnlyAvailable] = useState(searchParams.get('available') === '1');
   const [cookingId, setCookingId] = useState<string | null>(null);
 
   /** Раздел хранится в адресе (?section=lunch) — на него можно дать ссылку. */

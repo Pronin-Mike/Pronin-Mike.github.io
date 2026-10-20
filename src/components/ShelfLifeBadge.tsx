@@ -1,4 +1,5 @@
 import { formatExpiryLabel, getExpiryStatus, type ExpiryStatus } from '../lib/shelfLife';
+import { CircleAlert } from 'lucide-react';
 import { cn } from './ui';
 
 /* ============================================================================
@@ -33,7 +34,8 @@ export default function ShelfLifeBadge({ expiresAt, className }: ShelfLifeBadgeP
       )}
       title={label}
     >
-      {status === 'expired' ? `⚠ ${label}` : label}
+      {status === 'expired' ? <CircleAlert className="mr-1 size-3.5" aria-hidden="true" /> : null}
+      {label}
     </span>
   );
 }

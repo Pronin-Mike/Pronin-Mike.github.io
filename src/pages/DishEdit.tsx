@@ -172,7 +172,7 @@ export default function DishEdit() {
         <div className="flex gap-2">
           <Button onClick={() => void reload()}>Обновить</Button>
           <Link
-            to="/"
+            to="/recipes"
             className="inline-flex min-h-11 items-center rounded-full border border-cream-300 bg-white px-4 font-semibold text-ink-soft"
           >
             К рецептам

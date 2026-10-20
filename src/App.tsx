@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from './lib/supabase';
 import DishDetail from './pages/DishDetail';
 import DishEdit from './pages/DishEdit';
 import Fridge from './pages/Fridge';
+import Home from './pages/Home';
 import Import from './pages/Import';
 import Login from './pages/Login';
 import Recipes from './pages/Recipes';
@@ -60,7 +61,8 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
-                <Route path="/" element={<Recipes />} />
+                <Route path="/" element={<Home />} />
+                <Route path="/recipes" element={<Recipes />} />
                 <Route path="/fridge" element={<Fridge />} />
                 <Route path="/receipts" element={<ReceiptScan />} />
                 <Route path="/dish/new" element={<DishEdit />} />

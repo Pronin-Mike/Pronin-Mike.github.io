@@ -132,13 +132,13 @@ function fridgeRow(name: string): HTMLElement | null {
 async function openFridgePage(): Promise<void> {
   render(<App />);
   await screen.findByText('Омлет с сыром');
-  fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
+  fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
   await screen.findByRole('heading', { name: 'Холодильник' });
 }
 
 beforeEach(() => {
   // HashRouter читает window.location, а он живёт между тестами одного файла
-  window.history.replaceState(null, '', '#/');
+  window.history.replaceState(null, '', '#/recipes');
 
   fridge = [
     { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null },
@@ -299,6 +299,30 @@ describe('Recipes', () => {
   });
 });
 
+describe('Главная', () => {
+  it('показывает реальные показатели и только доступные рецепты', async () => {
+    window.history.replaceState(null, '', '#/');
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Мой холодильник', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Продукты 6' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Сроки 0' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Рецепты 1' })).toBeTruthy();
+    expect(screen.getByText('Омлет с сыром')).toBeTruthy();
+    expect(screen.queryByText('Борщ')).toBeNull();
+  });
+
+  it('показывает блок внимания только для проблемных сроков', async () => {
+    fridge[0].expiresAt = datePlusDays(-1);
+    fridge[1].expiresAt = datePlusDays(2);
+    window.history.replaceState(null, '', '#/');
+    render(<App />);
+
+    expect(await screen.findByText('Требуют внимания')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Сроки 2' })).toBeTruthy();
+  });
+});
+
 describe('Навигация и защита маршрутов', () => {
   it('без сессии показывает страницу входа', async () => {
     setSession(null);
@@ -312,7 +336,7 @@ describe('Навигация и защита маршрутов', () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
+    fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
 
     expect(await screen.findByText('сыр')).toBeTruthy();
     expect(screen.getByText('яйца')).toBeTruthy();
@@ -587,7 +611,7 @@ describe('Сроки годности', () => {
     await waitFor(() => expect(screen.queryByText('кефир', { selector: 'span' })).toBeNull());
 
     // В холодильнике продукт тоже исчез.
-    fireEvent.click(screen.getAllByRole('link', { name: /Холодильник/ })[0]);
+    fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
     await screen.findByRole('heading', { name: 'Холодильник' });
     expect(fridgeRow('кефир')).toBeNull();
     expect(screen.getByText('яйца')).toBeTruthy();
