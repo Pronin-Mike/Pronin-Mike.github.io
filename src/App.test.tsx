@@ -133,7 +133,7 @@ async function openFridgePage(): Promise<void> {
   render(<App />);
   await screen.findByText('Омлет с сыром');
   fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
-  await screen.findByRole('heading', { name: 'Холодильник' });
+  await screen.findByRole('heading', { name: 'Продукты' });
 }
 
 beforeEach(() => {
@@ -188,7 +188,8 @@ beforeEach(() => {
   });
   vi.mocked(api.updateFridgeItem).mockImplementation(async (id, patch) => {
     const existing = fridge.find((item) => item.id === id);
-    return {
+    const updated: FridgeItem = {
+      ...existing,
       id,
       name: patch.name ?? existing?.name ?? '',
       amount: patch.amount ?? existing?.amount ?? 0,
@@ -196,6 +197,8 @@ beforeEach(() => {
       updatedAt: null,
       expiresAt: patch.expiresAt ?? existing?.expiresAt ?? null
     };
+    if (existing) Object.assign(existing, updated);
+    return updated;
   });
   vi.mocked(api.deleteFridgeItem).mockImplementation(async (id) => {
     // Меняем массив на месте: мок fetchFridge замыкается на эту же переменную.
@@ -215,6 +218,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('Recipes', () => {
@@ -442,6 +446,7 @@ describe('Нормализация холодильника', () => {
     ];
     await openFridgePage();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Действия со списком' }));
     fireEvent.click(screen.getByRole('button', { name: 'Объединить названия (1)' }));
     const dialog = await screen.findByRole('dialog', { name: 'Объединить магазинные названия?' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Объединить' }));
@@ -542,11 +547,153 @@ describe('Импорт холодильника из CSV', () => {
   });
 });
 
+describe('Продукты v2.1', () => {
+  it('показывает компактные строки и выбирает действие по актуальному сроку', async () => {
+    fridge = [
+      { id: 'fresh', name: 'яблоки', amount: 4, unit: 'шт', updatedAt: null, expiresAt: datePlusDays(5) },
+      { id: 'expired', name: 'кефир', amount: 500, unit: 'мл', updatedAt: null, expiresAt: datePlusDays(-1) }
+    ];
+    await openFridgePage();
+
+    expect(within(fridgeRow('яблоки')!).getByRole('button', { name: 'Использовать' })).toBeTruthy();
+    expect(within(fridgeRow('кефир')!).getByRole('button', { name: 'Выбросить' })).toBeTruthy();
+    expect(within(fridgeRow('кефир')!).getByText(/просрочено/)).toBeTruthy();
+  });
+
+  it('ищет, фильтрует и сортирует продукты, сохраняя состояние в адресе', async () => {
+    fridge = [
+      { id: 'z', name: 'Яблоки', amount: 4, unit: 'шт', updatedAt: null, expiresAt: datePlusDays(8) },
+      { id: 'a', name: 'кефир', amount: 500, unit: 'мл', updatedAt: null, expiresAt: datePlusDays(-1) },
+      { id: 'm', name: 'молоко', amount: 1, unit: 'шт', updatedAt: null, expiresAt: null }
+    ];
+    await openFridgePage();
+
+    fireEvent.change(screen.getByLabelText('Найти продукт'), { target: { value: 'мол' } });
+    expect(fridgeRow('молоко')).toBeTruthy();
+    expect(fridgeRow('кефир')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить поиск' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Требуют внимания (1)' }));
+    expect(fridgeRow('кефир')).toBeTruthy();
+    expect(fridgeRow('Яблоки')).toBeNull();
+    expect(window.location.hash).toContain('expiring=1');
+    expect(window.location.hash).toContain('sort=expiry');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Все (3)' }));
+    fireEvent.change(screen.getByLabelText('Сортировка продуктов'), { target: { value: 'expiry' } });
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]).getByRole('button', { name: 'кефир' })).toBeTruthy();
+  });
+
+  it('открывает подробности по названию и возвращается назад из редактирования без сохранения', async () => {
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'яйца' }));
+    const details = await screen.findByRole('dialog', { name: 'яйца' });
+    expect(within(details).getByText('10 шт')).toBeTruthy();
+
+    fireEvent.click(within(details).getByRole('button', { name: 'Редактировать' }));
+    const edit = await screen.findByRole('dialog', { name: 'Редактировать продукт' });
+    fireEvent.change(within(edit).getByLabelText(/^Название/), { target: { value: 'перепелиные яйца' } });
+    fireEvent.click(within(edit).getByRole('button', { name: 'Назад' }));
+
+    expect(await screen.findByRole('dialog', { name: 'яйца' })).toBeTruthy();
+    expect(api.updateFridgeItem).not.toHaveBeenCalled();
+  });
+
+  it('редактирует продукт, сохраняя неизвестную стоимость неизвестной', async () => {
+    fridge = [{ id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null }];
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'яйца' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'яйца' })).getByRole('button', { name: 'Редактировать' }));
+    const edit = await screen.findByRole('dialog', { name: 'Редактировать продукт' });
+    fireEvent.change(within(edit).getByLabelText(/^Количество/), { target: { value: '8' } });
+    fireEvent.click(within(edit).getByRole('button', { name: 'Сохранить изменения' }));
+
+    await waitFor(() => expect(api.updateFridgeItem).toHaveBeenCalledWith('p1', expect.objectContaining({
+      amount: 8,
+      purchaseCost: null
+    })));
+    expect(await screen.findByRole('dialog', { name: 'яйца' })).toBeTruthy();
+  });
+
+  it('не имитирует использование без серверного RPC и валидирует расчёт остатка', async () => {
+    fridge = [{ id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null }];
+    await openFridgePage();
+    fireEvent.click(within(fridgeRow('бананы')!).getByRole('button', { name: 'Использовать' }));
+    const useDialog = await screen.findByRole('dialog', { name: 'Использовать продукт' });
+    fireEvent.change(within(useDialog).getByLabelText('Количество, г'), { target: { value: '300' } });
+
+    expect(within(useDialog).getByText('700 г')).toBeTruthy();
+    expect((within(useDialog).getByRole('button', { name: 'Подтвердить использование' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(useDialog).getByText(/сервер не имеет отдельного RPC/)).toBeTruthy();
+    expect(api.updateFridgeItem).not.toHaveBeenCalled();
+  });
+
+  it('подтверждает административное удаление отдельно и только явно', async () => {
+    fridge = [{ id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null }];
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'бананы' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'бананы' })).getByRole('button', { name: 'Удалить запись' }));
+    const confirmation = await screen.findByRole('dialog', { name: 'Удалить продукт?' });
+
+    expect(api.deleteFridgeItem).not.toHaveBeenCalled();
+    expect(within(confirmation).getByText(/Запись «бананы» будет удалена/)).toBeTruthy();
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Удалить запись' }));
+    await waitFor(() => expect(api.deleteFridgeItem).toHaveBeenCalledWith('p1'));
+  });
+
+  it('сохраняет окно операции при ошибке Supabase и показывает сообщение', async () => {
+    fridge = [{ id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null }];
+    vi.mocked(api.wasteProduct).mockRejectedValueOnce(new Error('Supabase недоступен'));
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'бананы' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'бананы' })).getByRole('button', { name: 'Выбросить' }));
+    const wasteDialog = await screen.findByRole('dialog', { name: 'Выбросить продукт' });
+    expect((within(wasteDialog).getByLabelText('Количество, г') as HTMLInputElement).value).toBe('1000');
+    fireEvent.click(within(wasteDialog).getByRole('button', { name: 'Выбросить' }));
+
+    expect(await screen.findByText('Supabase недоступен')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Выбросить продукт' })).toBeTruthy();
+  });
+
+  it('блокирует фон модального окна и восстанавливает фокус после закрытия', async () => {
+    await openFridgePage();
+    const trigger = screen.getByRole('button', { name: 'яйца' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'яйца' });
+
+    expect(document.body.style.position).toBe('fixed');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'яйца' })).toBeNull());
+    expect(document.body.style.position).toBe('');
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('на телефоне открывает добавление в общем Modal', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      media: '(min-width: 768px)',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
+    await openFridgePage();
+    expect(screen.queryByRole('heading', { name: 'Быстрое добавление' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить продукт' }));
+    expect(await screen.findByRole('dialog', { name: 'Добавить продукт' })).toBeTruthy();
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+});
+
 describe('Сроки годности', () => {
   it('передаёт общую стоимость ручной покупки', async () => {
     await openFridgePage();
     fillFridgeForm('бананы', '500');
-    fireEvent.change(screen.getByLabelText(/Стоимость покупки, ₽/), { target: { value: '150,50' } });
+    fireEvent.change(screen.getByLabelText(/Общая стоимость покупки, ₽/), { target: { value: '150,50' } });
     fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
     await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.addFridgeItem).mock.calls[0][0].purchaseCost).toBe(150.5);
@@ -612,7 +759,7 @@ describe('Сроки годности', () => {
 
     // В холодильнике продукт тоже исчез.
     fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
-    await screen.findByRole('heading', { name: 'Холодильник' });
+    await screen.findByRole('heading', { name: 'Продукты' });
     expect(fridgeRow('кефир')).toBeNull();
     expect(screen.getByText('яйца')).toBeTruthy();
   });
@@ -622,8 +769,9 @@ describe('Сроки годности', () => {
       { id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null, totalCost: 200, pricedAmount: 1000 }
     ];
     await openFridgePage();
-    fireEvent.click(screen.getByRole('button', { name: 'Выбросить «бананы»' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Выбросить «бананы»' });
+    fireEvent.click(screen.getByRole('button', { name: 'бананы' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'бананы' })).getByRole('button', { name: 'Выбросить' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Выбросить продукт' });
     fireEvent.change(within(dialog).getByLabelText(/Количество, г/), { target: { value: '300' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Выбросить' }));
     await waitFor(() => expect(api.wasteProduct).toHaveBeenCalledWith('p1', 300));

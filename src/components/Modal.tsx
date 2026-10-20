@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
-import { cn } from './ui';
+import { ArrowLeft, X } from 'lucide-react';
+import { cn, IconButton } from './ui';
 
 export interface ModalProps {
   open: boolean;
@@ -11,6 +11,9 @@ export interface ModalProps {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   closeOnBackdrop?: boolean;
+  /** Возврат к предыдущему экрану внутри того же модального сценария. */
+  onBack?: () => void;
+  backLabel?: string;
 }
 
 const SIZES = {
@@ -62,7 +65,9 @@ export default function Modal({
   children,
   footer,
   size = 'md',
-  closeOnBackdrop = true
+  closeOnBackdrop = true,
+  onBack,
+  backLabel = 'Назад'
 }: ModalProps) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -139,15 +144,15 @@ export default function Modal({
         )}
       >
         <header className="flex items-start gap-3 rounded-t-2xl border-b border-cream-300 bg-white p-4">
+          {onBack ? (
+            <IconButton label={backLabel} onClick={onBack} className="-ml-1">
+              <ArrowLeft className="size-5" aria-hidden="true" />
+            </IconButton>
+          ) : null}
           <h2 id={titleId} className="flex-1 font-display text-xl font-bold leading-tight text-ink">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid size-11 shrink-0 place-items-center rounded-[10px] border border-cream-300 bg-cream-100 text-ink-soft transition-colors hover:bg-cream-200"
-            aria-label="Закрыть"
-          >
+          <IconButton label="Закрыть" onClick={onClose}>
             <X className="size-4" aria-hidden="true" />
-          </button>
+          </IconButton>
         </header>
 
         <div className="flex-1 overscroll-contain overflow-y-auto p-4">{children}</div>

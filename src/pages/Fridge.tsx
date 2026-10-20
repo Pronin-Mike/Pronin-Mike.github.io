@@ -1,99 +1,123 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MutableRefObject } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Eraser, PackageX, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
+import {
+  CircleAlert,
+  Eraser,
+  PackageOpen,
+  Pencil,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  X
+} from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
-import Modal from '../components/Modal';
-import ShelfLifeBadge from '../components/ShelfLifeBadge';
 import { SkeletonRows } from '../components/Loading';
+import Modal from '../components/Modal';
+import ProductForm, { type ProductFormState } from '../components/ProductForm';
+import ProductRow from '../components/ProductRow';
+import ShelfLifeBadge from '../components/ShelfLifeBadge';
 import { useToast } from '../components/Toast';
-import { Button, Card, cn, Field, Input, Select } from '../components/ui';
+import { Badge, Button, Card, EmptyState, Field, IconButton, Input, Select, Tabs } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
 import { normalizeName } from '../lib/availability';
 import { formatAmount, productWord } from '../lib/format';
-import { planFridgeNameNormalization } from '../lib/receiptMatcher';
-import { ETERNAL_PRODUCTS, defaultExpiresAt, getExpiryStatus } from '../lib/shelfLife';
-import { validateFridgeInput } from '../lib/validation';
 import { formatCost, formatMoney, formatStockUnitCost } from '../lib/pricing';
-import type { ExpiryStatus } from '../lib/shelfLife';
-import type { FridgeInput, FridgeItem, Unit } from '../lib/types';
+import { planFridgeNameNormalization } from '../lib/receiptMatcher';
+import { ETERNAL_PRODUCTS, defaultExpiresAt, getExpiryStatus, type ExpiryStatus } from '../lib/shelfLife';
+import type { FridgeInput, FridgeItem } from '../lib/types';
+import { validateFridgeInput } from '../lib/validation';
 
-/* ============================================================================
- * Fridge.tsx — продукты: быстрое добавление, правка, удаление, поиск,
- * сортировка и фильтр по сроку годности.
- * При дубликате (название + единица) предлагаем «Заменить / Сложить / Отмена».
- * ========================================================================== */
-
-interface FormState {
-  name: string;
-  amount: string;
-  unit: Unit;
-  expiresAt: string;
-  cost: string;
-}
-
-const EMPTY_FORM: FormState = { name: '', amount: '', unit: 'г', expiresAt: '', cost: '' };
-
+const EMPTY_FORM: ProductFormState = { name: '', amount: '', unit: 'г', expiresAt: '', cost: '' };
 type SortMode = 'name' | 'expiry';
+type FilterMode = 'all' | 'attention';
+type ProductDialog = 'details' | 'edit' | 'use' | 'waste' | 'delete';
 
-/** Быстрые чипы «+Nд» рядом с полем срока годности. */
-const QUICK_DAYS = [1, 3, 7, 14, 30];
-
-/** Порядок групп при сортировке по сроку: просроченное — вверху. */
 const STATUS_ORDER: Record<ExpiryStatus, number> = {
   expired: 0,
-  soon: 1,
-  today: 2,
+  today: 1,
+  soon: 2,
   ok: 3,
   none: 4
 };
 
-/** Дата today + N дней в формате YYYY-MM-DD (по календарным суткам UTC). */
 function datePlusDays(days: number): string {
   const today = new Date();
   const stamp = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   return new Date(stamp + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Продукт «вечный» — срок годности ему автоматически не ставим. */
 function isEternal(name: string): boolean {
   const normalized = normalizeName(name);
-  return ETERNAL_PRODUCTS.some(
-    (product) => normalized === product || normalized.startsWith(`${product} `)
-  );
+  return ETERNAL_PRODUCTS.some((product) => normalized === product || normalized.startsWith(`${product} `));
+}
+
+function buildInput(form: ProductFormState): FridgeInput {
+  return {
+    name: form.name,
+    amount: Number(form.amount.replace(',', '.')),
+    unit: form.unit,
+    expiresAt: form.expiresAt || null,
+    purchaseCost: form.cost.trim() === '' ? null : Number(form.cost.replace(',', '.'))
+  };
+}
+
+function useDesktopForm(): boolean {
+  const [desktop, setDesktop] = useState(() => (
+    typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 768px)').matches : true
+  ));
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia('(min-width: 768px)');
+    const update = () => setDesktop(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  return desktop;
+}
+
+function itemCost(item: FridgeItem) {
+  const knownCost = item.totalCost ?? 0;
+  const pricedAmount = item.pricedAmount ?? 0;
+  return {
+    knownCost,
+    status: pricedAmount >= item.amount ? 'exact' as const : knownCost > 0 ? 'partial' as const : 'unknown' as const
+  };
 }
 
 export default function Fridge() {
   const { fridge, loading, error, reload, reloadFridge } = useCookbook();
   const toast = useToast();
-
+  const isDesktop = useDesktopForm();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
-  const [onlyExpiring, setOnlyExpiring] = useState(searchParams.get('expiring') === '1');
-  const [duplicate, setDuplicate] = useState<{ existing: FridgeItem; input: FridgeInput } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<FridgeItem | null>(null);
-  const [clearOpen, setClearOpen] = useState(false);
-  const [pastDateOpen, setPastDateOpen] = useState(false);
-  const [normalizeOpen, setNormalizeOpen] = useState(false);
-  const [wasteTarget, setWasteTarget] = useState<FridgeItem | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [addForm, setAddForm] = useState<ProductFormState>(EMPTY_FORM);
+  const [editForm, setEditForm] = useState<ProductFormState>(EMPTY_FORM);
+  const [selected, setSelected] = useState<FridgeItem | null>(null);
+  const [dialog, setDialog] = useState<ProductDialog | null>(null);
+  const [useAmount, setUseAmount] = useState('');
   const [wasteAmount, setWasteAmount] = useState('');
+  const [duplicate, setDuplicate] = useState<{ existing: FridgeItem; input: FridgeInput } | null>(null);
+  const [pastDate, setPastDate] = useState<{ mode: 'create' | 'edit'; input: FridgeInput } | null>(null);
+  const [normalizeOpen, setNormalizeOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
 
-  /** Пользователь правил дату руками — автоподстановка больше не срабатывает. */
-  const dateTouched = useRef(false);
-  const [dateInput, setDateInput] = useState<HTMLInputElement | null>(null);
+  const addDateTouched = useRef(false);
+  const editDateTouched = useRef(false);
+  const addNameRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (searchParams.get('add') !== '1') return;
-    const input = document.getElementById('fridge-name');
-    input?.scrollIntoView({ block: 'center' });
-    input?.focus({ preventScroll: true });
-  }, [searchParams]);
-
-  // ?sort=expiry — переход из блока «Скоро истекает».
   const sort: SortMode = searchParams.get('sort') === 'expiry' ? 'expiry' : 'name';
+  const filter: FilterMode = searchParams.get('expiring') === '1' ? 'attention' : 'all';
+
   const setSort = (next: SortMode) => {
     const params = new URLSearchParams(searchParams);
     if (next === 'expiry') params.set('sort', 'expiry');
@@ -101,171 +125,41 @@ export default function Fridge() {
     setSearchParams(params, { replace: true });
   };
 
-  const visible = useMemo(() => {
-    const needle = normalizeName(search);
-    let list = needle ? fridge.filter((item) => normalizeName(item.name).includes(needle)) : fridge;
-
-    if (onlyExpiring) {
-      list = list.filter((item) => {
-        const status = getExpiryStatus(item.expiresAt);
-        return status === 'soon' || status === 'today' || status === 'expired';
-      });
-    }
-
-    const sorted = [...list];
-    if (sort === 'expiry') {
-      sorted.sort((a, b) => {
-        const diff = STATUS_ORDER[getExpiryStatus(a.expiresAt)] - STATUS_ORDER[getExpiryStatus(b.expiresAt)];
-        if (diff !== 0) return diff;
-        if (a.expiresAt !== b.expiresAt) {
-          if (!a.expiresAt) return 1;
-          if (!b.expiresAt) return -1;
-          return a.expiresAt.localeCompare(b.expiresAt);
-        }
-        return a.name.localeCompare(b.name, 'ru');
-      });
+  const setFilter = (next: FilterMode) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'attention') {
+      params.set('expiring', '1');
+      params.set('sort', 'expiry');
     } else {
-      sorted.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      params.delete('expiring');
     }
-    return sorted;
-  }, [fridge, search, onlyExpiring, sort]);
-
-  const resetForm = () => {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    dateTouched.current = false;
+    setSearchParams(params, { replace: true });
   };
 
-  /** Общая обёртка: busy, тост, обновление списка. */
-  const run = async (task: () => Promise<unknown>, successMessage: string) => {
-    setBusy(true);
-    try {
-      await task();
-      toast.show(successMessage, 'success');
-      resetForm();
-      await reloadFridge();
-    } catch (caught) {
-      toast.show(caught instanceof Error ? caught.message : 'Не удалось выполнить операцию', 'error');
-    } finally {
-      setBusy(false);
+  const openAdd = () => {
+    if (isDesktop) {
+      addNameRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      addNameRef.current?.focus({ preventScroll: true });
+    } else {
+      setAddOpen(true);
     }
   };
 
-  /** Ввод названия: подставляем типовой срок, пока дату не тронули руками. */
-  const handleNameChange = (name: string) => {
-    setForm((prev) => {
-      if (dateTouched.current || prev.expiresAt) return { ...prev, name };
-      const suggested = isEternal(name) ? null : defaultExpiresAt(name);
-      return { ...prev, name, expiresAt: suggested ?? '' };
-    });
-  };
+  useEffect(() => {
+    if (searchParams.get('add') !== '1') return;
+    openAdd();
+    const params = new URLSearchParams(searchParams);
+    params.delete('add');
+    setSearchParams(params, { replace: true });
+    // Выполняем один раз для перехода с главной; дальнейшие query-изменения форму не переоткрывают.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesktop]);
 
-  const handleDateChange = (value: string) => {
-    dateTouched.current = value.length > 0;
-    setForm((prev) => ({ ...prev, expiresAt: value }));
-  };
+  const expiringCount = useMemo(() => fridge.filter((item) => {
+    const status = getExpiryStatus(item.expiresAt);
+    return status === 'soon' || status === 'today' || status === 'expired';
+  }).length, [fridge]);
 
-  const applyQuickDate = (days: number) => {
-    dateTouched.current = true;
-    setForm((prev) => ({ ...prev, expiresAt: datePlusDays(days) }));
-  };
-
-  const buildInput = (): FridgeInput => ({
-    name: form.name,
-    amount: Number(form.amount.replace(',', '.')),
-    unit: form.unit,
-    expiresAt: form.expiresAt || null,
-    purchaseCost: form.cost.trim() === '' ? null : Number(form.cost.replace(',', '.'))
-  });
-
-  const save = async (input: FridgeInput) => {
-    if (editingId) {
-      await run(() => api.updateFridgeItem(editingId, input), `«${input.name.trim()}» обновлено.`);
-      return;
-    }
-
-    const clash = fridge.find(
-      (item) => item.unit === input.unit && normalizeName(item.name) === normalizeName(input.name)
-    );
-
-    if (clash) {
-      setDuplicate({ existing: clash, input });
-      return;
-    }
-
-    await run(
-      () => api.addFridgeItem(input),
-      `«${input.name.trim()}» — ${formatAmount(input.amount)} ${input.unit} в холодильнике.`
-    );
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const input = buildInput();
-    const validation = validateFridgeInput(input);
-    if (!validation.ok) {
-      toast.show(validation.errors[0], 'error');
-      return;
-    }
-
-    // Дата в прошлом — переспрашиваем, но сохранить даём.
-    if (input.expiresAt && getExpiryStatus(input.expiresAt) === 'expired') {
-      setPastDateOpen(true);
-      return;
-    }
-
-    await save(input);
-  };
-
-  const resolveDuplicate = async (value: string | null) => {
-    const pending = duplicate;
-    setDuplicate(null);
-    if (!pending || !value || value === 'cancel') return;
-
-    if (value === 'replace') {
-      await run(
-        () => api.applyFridgePurchase(pending.existing.id, pending.input, 'replace'),
-        `Количество «${pending.existing.name}» заменено.`
-      );
-      return;
-    }
-
-    // «Сложить»: количества суммируем, срок — минимальный из двух.
-    const dates = [pending.existing.expiresAt, pending.input.expiresAt ?? null].filter(
-      (value): value is string => Boolean(value)
-    );
-    const mergedExpiresAt = dates.length ? dates.sort()[0] : null;
-
-    await run(
-      () =>
-        api.applyFridgePurchase(pending.existing.id, { ...pending.input, expiresAt: mergedExpiresAt }, 'sum'),
-      `К «${pending.existing.name}» добавлено ${formatAmount(pending.input.amount)} ${pending.input.unit}.`
-    );
-  };
-
-  const startEdit = (item: FridgeItem) => {
-    setEditingId(item.id);
-    setForm({
-      name: item.name,
-      amount: String(item.amount),
-      unit: item.unit,
-      expiresAt: item.expiresAt ?? '',
-      cost: ''
-    });
-    // Дату уже показали из базы — автоподстановка не должна её перебивать.
-    dateTouched.current = Boolean(item.expiresAt);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const expiringCount = useMemo(
-    () =>
-      fridge.filter((item) => {
-        const status = getExpiryStatus(item.expiresAt);
-        return status === 'soon' || status === 'today' || status === 'expired';
-      }).length,
-    [fridge]
-  );
   const normalizationGroups = useMemo(() => planFridgeNameNormalization(fridge), [fridge]);
   const normalizationRows = normalizationGroups.reduce((total, group) => total + group.ids.length, 0);
   const knownInventoryCost = fridge.reduce((sum, item) => sum + (item.totalCost ?? 0), 0);
@@ -273,224 +167,315 @@ export default function Fridge() {
     ? 'exact'
     : knownInventoryCost > 0 ? 'partial' : 'unknown';
 
-  const openWaste = (item: FridgeItem) => {
-    setWasteTarget(item);
-    setWasteAmount(String(item.amount));
+  const visible = useMemo(() => {
+    const needle = normalizeName(search);
+    let list = needle ? fridge.filter((item) => normalizeName(item.name).includes(needle)) : fridge;
+    if (filter === 'attention') {
+      list = list.filter((item) => ['soon', 'today', 'expired'].includes(getExpiryStatus(item.expiresAt)));
+    }
+    return [...list].sort((a, b) => {
+      if (sort === 'expiry') {
+        const statusDiff = STATUS_ORDER[getExpiryStatus(a.expiresAt)] - STATUS_ORDER[getExpiryStatus(b.expiresAt)];
+        if (statusDiff) return statusDiff;
+        if (a.expiresAt !== b.expiresAt) {
+          if (!a.expiresAt) return 1;
+          if (!b.expiresAt) return -1;
+          return a.expiresAt.localeCompare(b.expiresAt);
+        }
+      }
+      return a.name.localeCompare(b.name, 'ru');
+    });
+  }, [filter, fridge, search, sort]);
+
+  const perform = async <T,>(
+    task: () => Promise<T>,
+    success: string
+  ): Promise<{ ok: true; value: T } | { ok: false }> => {
+    setBusy(true);
+    try {
+      const result = await task();
+      await reloadFridge();
+      toast.show(success, 'success');
+      return { ok: true, value: result };
+    } catch (caught) {
+      toast.show(caught instanceof Error ? caught.message : 'Не удалось выполнить операцию', 'error');
+      return { ok: false };
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const confirmWaste = async () => {
-    const target = wasteTarget;
-    const amount = Number(wasteAmount.replace(',', '.'));
-    if (!target || !Number.isFinite(amount) || amount <= 0 || amount > target.amount) {
-      toast.show(`Количество должно быть от 0 до ${formatAmount(target?.amount ?? 0)}.`, 'error');
+  const suggestName = (
+    form: ProductFormState,
+    setForm: (value: ProductFormState) => void,
+    touched: MutableRefObject<boolean>,
+    name: string
+  ) => {
+    if (touched.current || form.expiresAt) {
+      setForm({ ...form, name });
       return;
     }
-    setWasteTarget(null);
-    await run(async () => {
-      const result = await api.wasteProduct(target.id, amount);
-      toast.show(`Потери: ${result.costComplete ? '' : '~'}${formatMoney(result.cost)}.`, 'info');
-    }, `«${target.name}» списан как потеря.`);
+    setForm({ ...form, name, expiresAt: isEternal(name) ? '' : defaultExpiresAt(name) ?? '' });
   };
 
+  const setDate = (
+    form: ProductFormState,
+    setForm: (value: ProductFormState) => void,
+    touched: MutableRefObject<boolean>,
+    value: string
+  ) => {
+    touched.current = value.length > 0;
+    setForm({ ...form, expiresAt: value });
+  };
+
+  const quickDate = (
+    form: ProductFormState,
+    setForm: (value: ProductFormState) => void,
+    touched: MutableRefObject<boolean>,
+    days: number
+  ) => {
+    touched.current = true;
+    setForm({ ...form, expiresAt: datePlusDays(days) });
+  };
+
+  const saveNew = async (input: FridgeInput) => {
+    const clash = fridge.find((item) => item.unit === input.unit && normalizeName(item.name) === normalizeName(input.name));
+    if (clash) {
+      setDuplicate({ existing: clash, input });
+      return;
+    }
+    const result = await perform(
+      () => api.addFridgeItem(input),
+      `«${input.name.trim()}» — ${formatAmount(input.amount)} ${input.unit} добавлено.`
+    );
+    if (!result.ok) return;
+    setAddForm(EMPTY_FORM);
+    addDateTouched.current = false;
+    setAddOpen(false);
+  };
+
+  const saveEdit = async (input: FridgeInput) => {
+    if (!selected) return;
+    const result = await perform(() => api.updateFridgeItem(selected.id, input), `«${input.name.trim()}» обновлено.`);
+    if (!result.ok) return;
+    setSelected(result.value);
+    setDialog('details');
+  };
+
+  const submitForm = (mode: 'create' | 'edit', event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const input = buildInput(mode === 'create' ? addForm : editForm);
+    const validation = validateFridgeInput(input);
+    if (!validation.ok) {
+      toast.show(validation.errors[0], 'error');
+      return;
+    }
+    if (input.expiresAt && getExpiryStatus(input.expiresAt) === 'expired') {
+      setPastDate({ mode, input });
+      return;
+    }
+    if (mode === 'create') void saveNew(input);
+    else void saveEdit(input);
+  };
+
+  const resolveDuplicate = async (value: string | null) => {
+    const pending = duplicate;
+    setDuplicate(null);
+    if (!pending || !value || value === 'cancel') return;
+    if (value === 'replace') {
+      const result = await perform(
+        () => api.applyFridgePurchase(pending.existing.id, pending.input, 'replace'),
+        `Количество «${pending.existing.name}» заменено.`
+      );
+      if (result.ok) {
+        setAddForm(EMPTY_FORM);
+        addDateTouched.current = false;
+        setAddOpen(false);
+      }
+      return;
+    }
+    const dates = [pending.existing.expiresAt, pending.input.expiresAt ?? null]
+      .filter((value): value is string => Boolean(value));
+    const expiresAt = dates.length ? dates.sort()[0] : null;
+    const result = await perform(
+      () => api.applyFridgePurchase(pending.existing.id, { ...pending.input, expiresAt }, 'sum'),
+      `К «${pending.existing.name}» добавлено ${formatAmount(pending.input.amount)} ${pending.input.unit}.`
+    );
+    if (result.ok) {
+      setAddForm(EMPTY_FORM);
+      addDateTouched.current = false;
+      setAddOpen(false);
+    }
+  };
+
+  const openDetails = (item: FridgeItem) => {
+    setSelected(item);
+    setDialog('details');
+  };
+
+  const openEdit = () => {
+    if (!selected) return;
+    setEditForm({
+      name: selected.name,
+      amount: String(selected.amount),
+      unit: selected.unit,
+      expiresAt: selected.expiresAt ?? '',
+      cost: ''
+    });
+    editDateTouched.current = Boolean(selected.expiresAt);
+    setDialog('edit');
+  };
+
+  const openUse = (item: FridgeItem) => {
+    setSelected(item);
+    setUseAmount('');
+    setDialog('use');
+  };
+
+  const openWaste = (item: FridgeItem) => {
+    setSelected(item);
+    setWasteAmount(String(item.amount));
+    setDialog('waste');
+  };
+
+  const parsedWaste = Number(wasteAmount.replace(',', '.'));
+  const wasteValid = Boolean(selected) && Number.isFinite(parsedWaste) && parsedWaste > 0 && parsedWaste <= (selected?.amount ?? 0);
+  const wasteRemainder = wasteValid && selected ? selected.amount - parsedWaste : null;
+
+  const confirmWaste = async () => {
+    if (!selected || !wasteValid) {
+      toast.show(`Количество должно быть больше нуля и не превышать ${formatAmount(selected?.amount ?? 0)}.`, 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.wasteProduct(selected.id, parsedWaste);
+      await reloadFridge();
+      toast.show(
+        `«${selected.name}» выброшено. Потери: ${result.costComplete ? '' : '~'}${formatMoney(result.cost)}.`,
+        'success'
+      );
+      setDialog(null);
+      setSelected(null);
+    } catch (caught) {
+      toast.show(caught instanceof Error ? caught.message : 'Не удалось выбросить продукт', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!selected) return;
+    const result = await perform(() => api.deleteFridgeItem(selected.id), `«${selected.name}» удалено.`);
+    if (!result.ok) return;
+    setDialog(null);
+    setSelected(null);
+  };
+
+  const parsedUse = Number(useAmount.replace(',', '.'));
+  const useValid = Boolean(selected) && Number.isFinite(parsedUse) && parsedUse > 0 && parsedUse <= (selected?.amount ?? 0);
+  const useRemainder = useValid && selected ? selected.amount - parsedUse : null;
+
+  const dialogTitle = dialog === 'edit'
+    ? 'Редактировать продукт'
+    : dialog === 'use'
+      ? 'Использовать продукт'
+      : dialog === 'waste'
+        ? 'Выбросить продукт'
+        : dialog === 'delete'
+          ? 'Удалить продукт?'
+          : selected?.name ?? 'Продукт';
+
   return (
-    <div className="flex flex-col gap-4 animate-rise-in">
-      <header>
-        <h1 className="font-display text-3xl text-ink">Холодильник</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          {loading ? 'Загружаем…' : `${productWord(fridge.length)} · известных остатков: ${formatCost({ knownCost: knownInventoryCost, status: inventoryCostStatus })}`}
-        </p>
+    <div className="flex flex-col gap-5 animate-rise-in">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Продукты</h1>
+          <p className="mt-1 text-sm text-ink-soft">{loading ? 'Загружаем…' : productWord(fridge.length)}</p>
+        </div>
+        <Button onClick={openAdd} className="shrink-0">
+          <Plus className="size-4" aria-hidden="true" />
+          Добавить продукт
+        </Button>
       </header>
 
-      <Card className="flex flex-col gap-3">
-        <h2 className="font-display text-lg text-ink">
-          {editingId ? 'Изменить продукт' : 'Добавить продукт'}
-        </h2>
+      <section aria-label="Сводка запасов" className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+          <span className="block truncate text-xs font-semibold text-ink-muted">Позиций</span>
+          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.length}</strong>
+        </Card>
+        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+          <span className="block truncate text-xs font-semibold text-ink-muted">Требуют внимания</span>
+          <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : expiringCount}</strong>
+        </Card>
+        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+          <span className="block truncate text-xs font-semibold text-ink-muted">Стоимость</span>
+          <strong className="mt-1 block truncate text-lg font-extrabold text-ink sm:text-2xl">
+            {loading ? '—' : formatCost({ knownCost: knownInventoryCost, status: inventoryCostStatus })}
+          </strong>
+        </Card>
+      </section>
 
-        <form className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1.2fr_auto]" onSubmit={(event) => void handleSubmit(event)}>
-          <Field label="Название" htmlFor="fridge-name">
+      {isDesktop ? (
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-display text-lg font-bold text-ink">Быстрое добавление</h2>
+          <ProductForm
+            id="product-add-inline"
+            value={addForm}
+            mode="create"
+            layout="inline"
+            busy={busy}
+            nameInputRef={addNameRef}
+            onChange={setAddForm}
+            onNameChange={(name) => suggestName(addForm, setAddForm, addDateTouched, name)}
+            onDateChange={(date) => setDate(addForm, setAddForm, addDateTouched, date)}
+            onQuickDate={(days) => quickDate(addForm, setAddForm, addDateTouched, days)}
+            onSubmit={(event) => submitForm('create', event)}
+          />
+        </Card>
+      ) : null}
+
+      <Card className="flex flex-col gap-3 p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
             <Input
-              id="fridge-name"
-              value={form.name}
-              placeholder="мука"
-              autoComplete="off"
-              onChange={(event) => handleNameChange(event.target.value)}
+              value={search}
+              className="pl-9 pr-11"
+              placeholder="Найти продукт"
+              aria-label="Найти продукт"
+              onChange={(event) => setSearch(event.target.value)}
             />
-          </Field>
-
-          <Field
-            label={editingId ? 'Новая стоимость остатка, ₽' : 'Стоимость покупки, ₽'}
-            htmlFor="fridge-cost"
-            hint={editingId ? 'Оставьте пустым, чтобы сохранить текущую оценку' : 'Необязательно'}
-          >
-            <Input
-              id="fridge-cost"
-              value={form.cost}
-              inputMode="decimal"
-              placeholder="150"
-              autoComplete="off"
-              onChange={(event) => setForm((prev) => ({ ...prev, cost: event.target.value }))}
-            />
-          </Field>
-
-          <Field label="Количество" htmlFor="fridge-amount">
-            <Input
-              id="fridge-amount"
-              value={form.amount}
-              inputMode="decimal"
-              placeholder="1000"
-              autoComplete="off"
-              onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-            />
-          </Field>
-
-          <Field label="Единица" htmlFor="fridge-unit">
-            <Select
-              id="fridge-unit"
-              value={form.unit}
-              onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value as Unit }))}
-            >
-              <option value="г">г</option>
-              <option value="мл">мл</option>
-              <option value="шт">шт</option>
-            </Select>
-          </Field>
-
-          <div className="flex gap-2 sm:pb-6">
-            <Button type="submit" disabled={busy} className="flex-1 sm:flex-none">
-              <Plus className="size-4" aria-hidden="true" />
-              {editingId ? 'Сохранить' : 'Добавить'}
-            </Button>
-            {editingId ? (
-              <Button variant="ghost" onClick={resetForm} disabled={busy}>
-                Отмена
-              </Button>
+            {search ? (
+              <IconButton
+                label="Очистить поиск"
+                onClick={() => setSearch('')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 border-0 bg-transparent shadow-none"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </IconButton>
             ) : null}
           </div>
-
-          <div className="flex flex-col gap-2 sm:col-span-5">
-            <Field label="Срок годности" htmlFor="fridge-expires" hint="Можно оставить пустым — тогда срок не отслеживается.">
-              <Input
-                id="fridge-expires"
-                ref={setDateInput}
-                type="date"
-                value={form.expiresAt}
-                onChange={(event) => handleDateChange(event.target.value)}
-              />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              {QUICK_DAYS.map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => applyQuickDate(days)}
-                  className="min-h-9 rounded-full border border-cream-300 bg-white px-3 text-sm font-semibold text-ink-soft transition hover:bg-cream-100"
-                >
-                  +{days}д
-                </button>
-              ))}
-              {form.expiresAt ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => handleDateChange('')}
-                  className="min-h-9 rounded-full border border-cream-300 bg-white px-3 text-sm font-semibold text-ink-muted transition hover:bg-cream-100"
-                >
-                  Убрать срок
-                </button>
-              ) : null}
-            </div>
+          <div className="flex shrink-0 gap-2">
+            <Select value={sort} aria-label="Сортировка продуктов" onChange={(event) => setSort(event.target.value as SortMode)}>
+              <option value="name">По названию</option>
+              <option value="expiry">По сроку</option>
+            </Select>
+            <IconButton label="Действия со списком" onClick={() => setToolsOpen(true)}>
+              <SlidersHorizontal className="size-5" aria-hidden="true" />
+            </IconButton>
           </div>
-        </form>
+        </div>
+        <Tabs
+          label="Фильтр продуктов"
+          value={filter}
+          onChange={setFilter}
+          items={[
+            { value: 'all', label: `Все (${fridge.length})` },
+            { value: 'attention', label: `Требуют внимания (${expiringCount})` }
+          ]}
+        />
       </Card>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted"
-            aria-hidden="true"
-          />
-          <Input
-            value={search}
-            className="pl-9"
-            placeholder="Найти продукт"
-            aria-label="Найти продукт"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          {search ? (
-            <button
-              type="button"
-              onClick={() => setSearch('')}
-              className="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 place-items-center rounded-full bg-cream-100 text-ink-muted"
-              aria-label="Очистить поиск"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="inline-flex min-h-11 items-center gap-1 rounded-full border border-cream-300 bg-white p-1 shadow-soft"
-            role="group"
-            aria-label="Сортировка продуктов"
-          >
-            <button
-              type="button"
-              onClick={() => setSort('name')}
-              aria-pressed={sort === 'name'}
-              className={cn(
-                'min-h-9 rounded-full px-3 text-sm font-semibold transition',
-                sort === 'name' ? 'bg-terra-500 text-white' : 'text-ink-soft hover:bg-cream-100'
-              )}
-            >
-              По названию
-            </button>
-            <button
-              type="button"
-              onClick={() => setSort('expiry')}
-              aria-pressed={sort === 'expiry'}
-              className={cn(
-                'min-h-9 rounded-full px-3 text-sm font-semibold transition',
-                sort === 'expiry' ? 'bg-terra-500 text-white' : 'text-ink-soft hover:bg-cream-100'
-              )}
-            >
-              По сроку
-            </button>
-          </div>
-
-          <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-cream-300 bg-white px-4 shadow-soft">
-            <input
-              type="checkbox"
-              className="size-4 accent-honey-500"
-              checked={onlyExpiring}
-              onChange={(event) => setOnlyExpiring(event.target.checked)}
-            />
-            <span className="text-sm font-semibold text-ink-soft">
-              Только истекающие{expiringCount ? ` (${expiringCount})` : ''}
-            </span>
-          </label>
-
-          <Button
-            variant="ghost"
-            disabled={busy || !normalizationGroups.length}
-            onClick={() => setNormalizeOpen(true)}
-          >
-            <Sparkles className="size-4" aria-hidden="true" />
-            Объединить названия{normalizationGroups.length ? ` (${normalizationGroups.length})` : ''}
-          </Button>
-
-          <Button
-            variant="ghost"
-            className="text-berry-500"
-            disabled={busy || !fridge.length}
-            onClick={() => setClearOpen(true)}
-          >
-            <Eraser className="size-4" aria-hidden="true" />
-            Очистить холодильник
-          </Button>
-        </div>
-      </div>
 
       {error && !loading ? (
         <Card className="flex flex-col items-start gap-3">
@@ -504,93 +489,206 @@ export default function Fridge() {
       {!loading && visible.length ? (
         <ul className="flex flex-col gap-2">
           {visible.map((item) => (
-            <li
+            <ProductRow
               key={item.id}
-              className={cn(
-                'flex flex-wrap items-center gap-3 rounded-2xl border border-cream-300 bg-white px-4 py-3 shadow-soft',
-                editingId === item.id && 'border-terra-400 ring-4 ring-terra-100'
-              )}
-            >
-              <span className="min-w-0 flex-1 break-words font-semibold text-ink">{item.name}</span>
-              <span className="shrink-0 rounded-full bg-terra-50 px-3 py-1 text-sm font-bold tabular-nums text-terra-700">
-                {formatAmount(item.amount)} {item.unit}
-              </span>
-              <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink-soft" title="Известная стоимость остатка и средняя цена">
-                <span className="block">{formatCost({ knownCost: item.totalCost ?? 0, status: (item.pricedAmount ?? 0) >= item.amount ? 'exact' : (item.totalCost ?? 0) > 0 ? 'partial' : 'unknown' })}</span>
-                <span className="block text-xs font-normal text-ink-muted">{formatStockUnitCost(item)}</span>
-              </span>
-              <ShelfLifeBadge expiresAt={item.expiresAt} />
-              <span className="flex shrink-0 gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-9 !min-h-9 !px-0"
-                  aria-label={`Изменить «${item.name}»`}
-                  disabled={busy}
-                  onClick={() => startEdit(item)}
-                >
-                  <Pencil className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-9 !min-h-9 !px-0 text-honey-700"
-                  aria-label={`Выбросить «${item.name}»`}
-                  disabled={busy}
-                  onClick={() => openWaste(item)}
-                >
-                  <PackageX className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-9 !min-h-9 !px-0 text-berry-500"
-                  aria-label={`Удалить «${item.name}»`}
-                  disabled={busy}
-                  onClick={() => setDeleteTarget(item)}
-                >
-                  <Trash2 className="size-4" aria-hidden="true" />
-                </Button>
-              </span>
-            </li>
+              item={item}
+              busy={busy}
+              onOpen={openDetails}
+              onUse={openUse}
+              onWaste={openWaste}
+            />
           ))}
         </ul>
       ) : null}
 
       {!loading && !visible.length ? (
-        <Card className="flex flex-col items-center gap-3 py-10 text-center">
-          <span className="text-4xl" aria-hidden="true">
-            {fridge.length ? '🔍' : '🧊'}
-          </span>
-          <h2 className="font-display text-xl text-ink">
-            {fridge.length ? 'Ничего не найдено' : 'Холодильник пуст'}
-          </h2>
-          <p className="max-w-md text-sm text-ink-soft">
-            {fridge.length
-              ? onlyExpiring
-                ? 'Среди продуктов нет истекающих и просроченных.'
-                : 'Продукта с таким названием нет.'
-              : 'Добавьте продукты — название, количество и единицу измерения (г, мл или шт).'}
-          </p>
-          <Link
-            to="/import"
-            className="inline-flex min-h-11 items-center rounded-full border border-cream-300 bg-white px-4 font-semibold text-ink-soft"
-          >
-            Заполнить из CSV
-          </Link>
-        </Card>
+        <EmptyState
+          icon={<PackageOpen className="size-9" />}
+          title={fridge.length ? 'Ничего не найдено' : 'Холодильник пуст'}
+          description={fridge.length
+            ? filter === 'attention' ? 'Сейчас ни один продукт не требует внимания.' : 'Попробуйте изменить поиск.'
+            : 'Добавьте первый продукт вручную или загрузите CSV.'}
+          action={fridge.length ? (
+            <Button variant="ghost" onClick={() => { setSearch(''); setFilter('all'); }}>Сбросить фильтры</Button>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={openAdd}>Добавить продукт</Button>
+              <Link to="/import" className="inline-flex min-h-11 items-center rounded-[10px] border border-cream-300 bg-white px-4 font-semibold text-ink-soft">
+                Загрузить CSV
+              </Link>
+            </div>
+          )}
+        />
       ) : null}
+
+      <Modal
+        open={addOpen}
+        title="Добавить продукт"
+        size="md"
+        onClose={() => setAddOpen(false)}
+        footer={(
+          <>
+            <Button type="submit" form="product-add-modal" disabled={busy} className="flex-1">Добавить продукт</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setAddOpen(false)}>Отмена</Button>
+          </>
+        )}
+      >
+        <ProductForm
+          id="product-add-modal"
+          value={addForm}
+          mode="create"
+          busy={busy}
+          onChange={setAddForm}
+          onNameChange={(name) => suggestName(addForm, setAddForm, addDateTouched, name)}
+          onDateChange={(date) => setDate(addForm, setAddForm, addDateTouched, date)}
+          onQuickDate={(days) => quickDate(addForm, setAddForm, addDateTouched, days)}
+          onSubmit={(event) => submitForm('create', event)}
+          showSubmit={false}
+        />
+      </Modal>
+
+      <Modal
+        open={Boolean(dialog && selected)}
+        title={dialogTitle}
+        size="sm"
+        onClose={() => { setDialog(null); setSelected(null); }}
+        onBack={dialog && dialog !== 'details' ? () => setDialog('details') : undefined}
+        footer={dialog === 'edit' ? (
+          <>
+            <Button type="submit" form="product-edit" disabled={busy} className="flex-1">Сохранить изменения</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setDialog('details')}>Отмена</Button>
+          </>
+        ) : dialog === 'waste' ? (
+          <>
+            <Button variant="danger" disabled={busy || !wasteValid} onClick={() => void confirmWaste()} className="flex-1">Выбросить</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setDialog('details')}>Отмена</Button>
+          </>
+        ) : dialog === 'delete' ? (
+          <>
+            <Button variant="danger" disabled={busy} onClick={() => void confirmDelete()} className="flex-1">Удалить запись</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setDialog('details')}>Отмена</Button>
+          </>
+        ) : dialog === 'use' ? (
+          <Button variant="ghost" onClick={() => setDialog('details')}>Вернуться к продукту</Button>
+        ) : undefined}
+      >
+        {selected && dialog === 'details' ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-2xl border border-cream-300 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words font-display text-xl font-extrabold text-ink">{selected.name}</p>
+                  <p className="mt-1 text-2xl font-extrabold tabular-nums text-ink">{formatAmount(selected.amount)} {selected.unit}</p>
+                </div>
+                <ShelfLifeBadge expiresAt={selected.expiresAt} />
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-cream-300 pt-4 text-sm">
+                <div><dt className="text-ink-muted">Срок годности</dt><dd className="mt-1 font-bold text-ink">{selected.expiresAt ?? 'Не указан'}</dd></div>
+                <div><dt className="text-ink-muted">Стоимость остатка</dt><dd className="mt-1 font-bold text-ink">{formatCost(itemCost(selected))}</dd></div>
+                <div className="col-span-2"><dt className="text-ink-muted">Средняя стоимость</dt><dd className="mt-1 font-bold text-ink">{formatStockUnitCost(selected)}</dd></div>
+              </dl>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                disabled={getExpiryStatus(selected.expiresAt) === 'expired'}
+                onClick={() => openUse(selected)}
+              >Использовать</Button>
+              <Button variant="ghost" onClick={openEdit}><Pencil className="size-4" aria-hidden="true" />Редактировать</Button>
+              <Button variant="ghost" className="text-honey-700" onClick={() => openWaste(selected)}>Выбросить</Button>
+              <Button variant="ghost" className="text-berry-500" onClick={() => setDialog('delete')}><Trash2 className="size-4" aria-hidden="true" />Удалить запись</Button>
+            </div>
+          </div>
+        ) : null}
+
+        {selected && dialog === 'edit' ? (
+          <ProductForm
+            id="product-edit"
+            value={editForm}
+            mode="edit"
+            busy={busy}
+            onChange={setEditForm}
+            onNameChange={(name) => suggestName(editForm, setEditForm, editDateTouched, name)}
+            onDateChange={(date) => setDate(editForm, setEditForm, editDateTouched, date)}
+            onQuickDate={(days) => quickDate(editForm, setEditForm, editDateTouched, days)}
+            onSubmit={(event) => submitForm('edit', event)}
+            showSubmit={false}
+          />
+        ) : null}
+
+        {selected && dialog === 'use' ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl bg-cream-200 p-3 text-sm text-ink-soft">
+              Текущий остаток: <strong className="text-ink">{formatAmount(selected.amount)} {selected.unit}</strong>
+            </div>
+            <Field label={`Количество, ${selected.unit}`} htmlFor="use-amount">
+              <Input id="use-amount" inputMode="decimal" value={useAmount} onChange={(event) => setUseAmount(event.target.value)} />
+            </Field>
+            <p className="text-sm text-ink-soft">
+              Останется: <strong className="text-ink">{useRemainder === null ? '—' : `${formatAmount(useRemainder)} ${selected.unit}`}</strong>
+            </p>
+            {!useValid && useAmount ? <p className="text-sm font-semibold text-berry-700">Введите количество больше нуля и не больше текущего остатка.</p> : null}
+            <div className="flex gap-3 rounded-xl border border-honey-200 bg-honey-50 p-3 text-sm leading-relaxed text-honey-800">
+              <CircleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+              <p>Операция пока недоступна: сервер не имеет отдельного RPC для обычного использования. Административная корректировка не применяется вместо расхода.</p>
+            </div>
+            <Button disabled>Подтвердить использование</Button>
+          </div>
+        ) : null}
+
+        {selected && dialog === 'waste' ? (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl bg-cream-200 p-3 text-sm text-ink-soft">
+              Текущий остаток: <strong className="text-ink">{formatAmount(selected.amount)} {selected.unit}</strong>
+            </div>
+            <Field label={`Количество, ${selected.unit}`} htmlFor="waste-amount">
+              <Input id="waste-amount" inputMode="decimal" value={wasteAmount} onChange={(event) => setWasteAmount(event.target.value)} />
+            </Field>
+            <p className="text-sm text-ink-soft">
+              После выбрасывания останется: <strong className="text-ink">{wasteRemainder === null ? '—' : `${formatAmount(wasteRemainder)} ${selected.unit}`}</strong>
+            </p>
+            {!wasteValid ? <p className="text-sm font-semibold text-berry-700">Количество должно быть больше нуля и не превышать остаток.</p> : null}
+          </div>
+        ) : null}
+
+        {selected && dialog === 'delete' ? (
+          <div className="flex flex-col gap-3">
+            <Badge tone="error" className="self-start">Опасное действие</Badge>
+            <p className="text-[15px] leading-relaxed text-ink-soft">
+              Запись «{selected.name}» будет удалена из холодильника. Это административное удаление, а не использование или выбрасывание продукта.
+            </p>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal open={toolsOpen} title="Действия со списком" size="sm" onClose={() => setToolsOpen(false)}>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="ghost"
+            disabled={busy || !normalizationGroups.length}
+            onClick={() => { setToolsOpen(false); setNormalizeOpen(true); }}
+            className="justify-start"
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Объединить названия{normalizationGroups.length ? ` (${normalizationGroups.length})` : ''}
+          </Button>
+          <Button
+            variant="ghost"
+            className="justify-start text-berry-500"
+            disabled={busy || !fridge.length}
+            onClick={() => { setToolsOpen(false); setClearOpen(true); }}
+          >
+            <Eraser className="size-4" aria-hidden="true" />
+            Очистить холодильник
+          </Button>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(duplicate)}
         title="Такой продукт уже есть"
-        description={
-          duplicate
-            ? `«${duplicate.existing.name}» — ${formatAmount(duplicate.existing.amount)} ${duplicate.existing.unit}. ` +
-              `Новое значение: ${formatAmount(duplicate.input.amount)} ${duplicate.input.unit}. ` +
-              'При сложении останется более ранний срок годности.'
-            : ''
-        }
+        description={duplicate
+          ? `«${duplicate.existing.name}» — ${formatAmount(duplicate.existing.amount)} ${duplicate.existing.unit}. Новое значение: ${formatAmount(duplicate.input.amount)} ${duplicate.input.unit}. При сложении останется более ранний срок годности.`
+          : ''}
         busy={busy}
         actions={[
           { label: 'Заменить', value: 'replace', variant: 'primary' },
@@ -600,43 +698,29 @@ export default function Fridge() {
         onResolve={(value) => void resolveDuplicate(value)}
       />
 
-      <Modal
-        open={wasteTarget !== null}
-        title={wasteTarget ? `Выбросить «${wasteTarget.name}»` : 'Выбросить продукт'}
-        size="sm"
-        onClose={() => setWasteTarget(null)}
-        footer={(
-          <>
-            <Button variant="danger" disabled={busy} onClick={() => void confirmWaste()}>Выбросить</Button>
-            <Button variant="ghost" disabled={busy} onClick={() => setWasteTarget(null)}>Отмена</Button>
-          </>
-        )}
-      >
-        <Field label={`Количество, ${wasteTarget?.unit ?? ''}`} htmlFor="waste-amount" hint={`Доступно: ${formatAmount(wasteTarget?.amount ?? 0)}`}>
-          <Input id="waste-amount" inputMode="decimal" value={wasteAmount} onChange={(event) => setWasteAmount(event.target.value)} />
-        </Field>
-      </Modal>
-
       <ConfirmDialog
-        open={pastDateOpen}
+        open={Boolean(pastDate)}
         title="Дата уже прошла"
-        description={`Срок годности ${form.expiresAt} уже истёк. Это просроченный продукт?`}
+        description={pastDate ? `Срок годности ${pastDate.input.expiresAt} уже истёк. Сохранить просроченный продукт?` : ''}
         busy={busy}
         actions={[
           { label: 'Да, сохранить', value: 'save', variant: 'danger' },
           { label: 'Изменить', value: 'fix', variant: 'ghost' }
         ]}
         onResolve={(value) => {
-          setPastDateOpen(false);
-          if (value === 'save') void save(buildInput());
-          else dateInput?.focus();
+          const pending = pastDate;
+          setPastDate(null);
+          if (value === 'save' && pending) {
+            if (pending.mode === 'create') void saveNew(pending.input);
+            else void saveEdit(pending.input);
+          }
         }}
       />
 
       <ConfirmDialog
         open={normalizeOpen}
         title="Объединить магазинные названия?"
-        description={`Будет обработано ${normalizationRows} позиций: бренды и служебные признаки будут заменены общей категорией, а остатки одинаковых продуктов сложатся.`}
+        description={`Будет обработано ${normalizationRows} позиций: магазинные названия заменятся общей категорией, а остатки сложатся.`}
         busy={busy}
         actions={[
           { label: 'Объединить', value: 'normalize', variant: 'primary' },
@@ -644,19 +728,14 @@ export default function Fridge() {
         ]}
         onResolve={(value) => {
           setNormalizeOpen(false);
-          if (value === 'normalize') {
-            void run(
-              () => api.normalizeFridgeNames(normalizationGroups),
-              'Магазинные названия объединены.'
-            );
-          }
+          if (value === 'normalize') void perform(() => api.normalizeFridgeNames(normalizationGroups), 'Магазинные названия объединены.');
         }}
       />
 
       <ConfirmDialog
         open={clearOpen}
         title="Очистить холодильник?"
-        description={`Будут удалены все продукты (${productWord(fridge.length)}). Блюда останутся, но станут недоступными.`}
+        description={`Будут удалены все продукты (${productWord(fridge.length)}). Рецепты останутся, но станут недоступны.`}
         busy={busy}
         actions={[
           { label: 'Очистить', value: 'clear', variant: 'danger' },
@@ -664,29 +743,7 @@ export default function Fridge() {
         ]}
         onResolve={(value) => {
           setClearOpen(false);
-          if (value === 'clear') void run(() => api.clearFridge(), 'Холодильник очищен.');
-        }}
-      />
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        title="Удалить продукт?"
-        description={
-          deleteTarget
-            ? `«${deleteTarget.name}» пропадёт из холодильника, и блюда с ним станут недоступны.`
-            : ''
-        }
-        busy={busy}
-        actions={[
-          { label: 'Удалить', value: 'delete', variant: 'danger' },
-          { label: 'Отмена', value: 'cancel', variant: 'ghost' }
-        ]}
-        onResolve={(value) => {
-          const target = deleteTarget;
-          setDeleteTarget(null);
-          if (value === 'delete' && target) {
-            void run(() => api.deleteFridgeItem(target.id), `«${target.name}» удалён.`);
-          }
+          if (value === 'clear') void perform(() => api.clearFridge(), 'Холодильник очищен.');
         }}
       />
     </div>
