@@ -58,7 +58,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-cream-300 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-4 px-4">
+        <div className="mx-auto flex min-h-16 max-w-[1260px] items-center gap-4 px-4 lg:px-[30px]">
           <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-lg">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-terra-500 text-white">
               <Refrigerator className="size-5" aria-hidden="true" />
@@ -132,7 +132,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-5 sm:pt-6 lg:pb-12">
+      <main className="mx-auto w-full max-w-[1260px] flex-1 px-4 pb-28 pt-5 sm:pt-6 lg:px-[30px] lg:pb-12">
         <Outlet />
       </main>
 

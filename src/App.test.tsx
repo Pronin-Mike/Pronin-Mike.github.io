@@ -117,6 +117,7 @@ function fillFridgeForm(name: string, amount: string, expiresAt?: string): HTMLB
   fireEvent.change(within(dialog).getByLabelText(/^Название/), { target: { value: name } });
   fireEvent.change(within(dialog).getByLabelText(/^Количество/), { target: { value: amount } });
   if (expiresAt !== undefined) {
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Указать срок годности и цену' }));
     fireEvent.change(within(dialog).getByLabelText(/^Срок годности/), { target: { value: expiresAt } });
   }
   return within(dialog).getByRole('button', { name: 'Добавить продукт' }) as HTMLButtonElement;
@@ -124,6 +125,9 @@ function fillFridgeForm(name: string, amount: string, expiresAt?: string): HTMLB
 
 /** Поле срока годности в форме. */
 function expiryField(): HTMLInputElement {
+  if (!screen.queryByLabelText(/^Срок годности/)) {
+    fireEvent.click(screen.getByRole('button', { name: 'Указать срок годности и цену' }));
+  }
   return screen.getByLabelText(/^Срок годности/) as HTMLInputElement;
 }
 
@@ -788,6 +792,7 @@ describe('Сроки годности', () => {
   it('передаёт общую стоимость ручной покупки', async () => {
     await openFridgePage();
     const submit = fillFridgeForm('бананы', '500');
+    fireEvent.click(screen.getByRole('button', { name: 'Указать срок годности и цену' }));
     fireEvent.change(screen.getByLabelText(/Общая стоимость покупки, ₽/), { target: { value: '150,50' } });
     fireEvent.click(submit);
     await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));

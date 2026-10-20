@@ -383,7 +383,7 @@ export default function Fridge() {
     <div className="flex flex-col gap-5 animate-rise-in">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Мои продукты</h1>
+          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Мои продукты</h1>
           <p className="mt-1 text-sm text-ink-soft">{loading ? 'Загружаем…' : `${productWord(fridge.length)} в холодильнике`}</p>
         </div>
         <Button onClick={openAdd} className="shrink-0">

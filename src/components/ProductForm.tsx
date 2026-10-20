@@ -1,4 +1,4 @@
-import type { FormEvent, Ref } from 'react';
+import { useState, type FormEvent, type Ref } from 'react';
 import type { Unit } from '../lib/types';
 import { Field, Input, Select } from './ui';
 
@@ -36,6 +36,7 @@ export default function ProductForm({
   onSubmit
 }: ProductFormProps) {
   const edit = mode === 'edit';
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <form
@@ -91,11 +92,17 @@ export default function ProductForm({
           </div>
         </div>
       ) : (
-        <details className="group sm:col-span-2">
-          <summary className="flex min-h-11 cursor-pointer items-center justify-between rounded-xl border border-cream-300 bg-white px-3 text-sm font-bold text-ink transition-colors hover:bg-cream-100">
-            Срок годности и стоимость
-            <span aria-hidden="true" className="text-lg leading-none text-ink-muted transition-transform group-open:rotate-180">⌄</span>
-          </summary>
+        <div className="sm:col-span-2">
+          <button
+            type="button"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((open) => !open)}
+            className="flex items-center gap-2 py-1 text-left text-sm font-extrabold text-terra-700 transition-colors hover:text-terra-800"
+          >
+            <span aria-hidden="true" className="text-[11px] leading-none">{advancedOpen ? '▼' : '▶'}</span>
+            Указать срок годности и цену
+          </button>
+          {advancedOpen ? (
           <div className="mt-3 grid gap-4 rounded-xl border border-cream-300 bg-cream-100 p-3 sm:grid-cols-2">
             <Field label="Срок годности" htmlFor={`${id}-expires`} hint="Можно оставить пустым — срок не отслеживается.">
               <Input id={`${id}-expires`} ref={dateInputRef} type="date" value={value.expiresAt} onChange={(event) => onDateChange(event.target.value)} />
@@ -104,7 +111,8 @@ export default function ProductForm({
               <Input id={`${id}-cost`} value={value.cost} inputMode="decimal" placeholder="Необязательно" autoComplete="off" onChange={(event) => onChange({ ...value, cost: event.target.value })} />
             </Field>
           </div>
-        </details>
+          ) : null}
+        </div>
       )}
     </form>
   );
