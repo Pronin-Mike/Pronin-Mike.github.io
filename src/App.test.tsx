@@ -33,6 +33,7 @@ vi.mock('./lib/api', () => ({
   applyFridgePurchase: vi.fn(),
   deleteFridgeItem: vi.fn(),
   clearFridge: vi.fn(),
+  consumeProduct: vi.fn(),
   wasteProduct: vi.fn(),
   wasteExpiredProducts: vi.fn(),
   normalizeFridgeNames: vi.fn(),
@@ -211,6 +212,20 @@ beforeEach(() => {
     if (existing && amount >= existing.amount) fridge = fridge.filter((item) => item.id !== id);
     else if (existing) existing.amount -= amount;
     return { cost: 0, costComplete: false };
+  });
+  vi.mocked(api.consumeProduct).mockImplementation(async (id, amount, operationId) => {
+    const existing = fridge.find((item) => item.id === id);
+    const before = existing?.amount ?? 0;
+    const cost = before > 0 ? (existing?.totalCost ?? 0) * amount / before : 0;
+    if (existing && amount >= existing.amount) fridge = fridge.filter((item) => item.id !== id);
+    else if (existing) existing.amount -= amount;
+    return {
+      operationId,
+      amount,
+      remainingAmount: Math.max(0, before - amount),
+      cost,
+      costComplete: Boolean(existing && (existing.pricedAmount ?? 0) >= before)
+    };
   });
   vi.mocked(api.wasteExpiredProducts).mockResolvedValue({ count: 0, cost: 0 });
 });
@@ -616,17 +631,60 @@ describe('Продукты v2.1', () => {
     expect(await screen.findByRole('dialog', { name: 'яйца' })).toBeTruthy();
   });
 
-  it('не имитирует использование без серверного RPC и валидирует расчёт остатка', async () => {
+  it('использует часть продукта через RPC и показывает рассчитанный остаток', async () => {
+    fridge = [{ id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null, totalCost: 200, pricedAmount: 1000 }];
+    await openFridgePage();
+    fireEvent.click(within(fridgeRow('бананы')!).getByRole('button', { name: 'Использовать' }));
+    const useDialog = await screen.findByRole('dialog', { name: 'Использовать продукт' });
+    fireEvent.change(within(useDialog).getByLabelText('Количество, г'), { target: { value: '0' } });
+    expect((within(useDialog).getByRole('button', { name: 'Подтвердить использование' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(useDialog).getByLabelText('Количество, г'), { target: { value: '300' } });
+
+    expect(within(useDialog).getByText('700 г')).toBeTruthy();
+    const confirm = within(useDialog).getByRole('button', { name: 'Подтвердить использование' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.consumeProduct).toHaveBeenCalledWith('p1', 300, expect.any(String)));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Использовать продукт' })).toBeNull());
+    expect(fridgeRow('бананы')).toBeTruthy();
+    expect(within(fridgeRow('бананы')!).getByText('700 г')).toBeTruthy();
+  });
+
+  it('при сетевом повторе использует тот же operation_id и не закрывает окно после ошибки', async () => {
     fridge = [{ id: 'p1', name: 'бананы', amount: 1000, unit: 'г', updatedAt: null, expiresAt: null }];
+    vi.mocked(api.consumeProduct)
+      .mockRejectedValueOnce(new Error('Сеть недоступна'))
+      .mockImplementationOnce(async (_id, amount, operationId) => ({
+        operationId,
+        amount,
+        remainingAmount: 700,
+        cost: 0,
+        costComplete: false
+      }));
     await openFridgePage();
     fireEvent.click(within(fridgeRow('бананы')!).getByRole('button', { name: 'Использовать' }));
     const useDialog = await screen.findByRole('dialog', { name: 'Использовать продукт' });
     fireEvent.change(within(useDialog).getByLabelText('Количество, г'), { target: { value: '300' } });
+    fireEvent.click(within(useDialog).getByRole('button', { name: 'Подтвердить использование' }));
 
-    expect(within(useDialog).getByText('700 г')).toBeTruthy();
-    expect((within(useDialog).getByRole('button', { name: 'Подтвердить использование' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(within(useDialog).getByText(/сервер не имеет отдельного RPC/)).toBeTruthy();
-    expect(api.updateFridgeItem).not.toHaveBeenCalled();
+    expect(await screen.findByText('Сеть недоступна')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Использовать продукт' })).toBeTruthy();
+    const firstOperationId = vi.mocked(api.consumeProduct).mock.calls[0][2];
+    fireEvent.click(within(useDialog).getByRole('button', { name: 'Подтвердить использование' }));
+    await waitFor(() => expect(api.consumeProduct).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.consumeProduct).mock.calls[1][2]).toBe(firstOperationId);
+  });
+
+  it('после полного использования убирает продукт из активных запасов', async () => {
+    fridge = [{ id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null }];
+    await openFridgePage();
+    fireEvent.click(within(fridgeRow('яйца')!).getByRole('button', { name: 'Использовать' }));
+    const useDialog = await screen.findByRole('dialog', { name: 'Использовать продукт' });
+    fireEvent.change(within(useDialog).getByLabelText('Количество, шт'), { target: { value: '10' } });
+    fireEvent.click(within(useDialog).getByRole('button', { name: 'Подтвердить использование' }));
+
+    await waitFor(() => expect(api.consumeProduct).toHaveBeenCalledWith('p1', 10, expect.any(String)));
+    await waitFor(() => expect(fridgeRow('яйца')).toBeNull());
   });
 
   it('подтверждает административное удаление отдельно и только явно', async () => {

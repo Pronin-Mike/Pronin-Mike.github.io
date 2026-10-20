@@ -9,6 +9,7 @@ import { supabase } from './supabase';
 import type {
   BackupFile,
   CookResult,
+  ConsumeResult,
   Dish,
   DishFullRow,
   DishIngredient,
@@ -262,6 +263,35 @@ export async function wasteProduct(id: string, amount: number): Promise<{ cost: 
   if (error) raise('Не удалось выбросить продукт', error);
   const result = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
   return { cost: Number(result.cost ?? 0), costComplete: Boolean(result.cost_complete) };
+}
+
+export async function consumeProduct(id: string, amount: number, operationId: string): Promise<ConsumeResult> {
+  const { data, error } = await supabase.rpc('consume_product', {
+    p_item_id: id,
+    p_amount: round3(amount),
+    p_operation_id: operationId
+  });
+  if (error) raise('Не удалось использовать продукт', error);
+
+  const result = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  const consumedAmount = Number(result.amount);
+  const remainingAmount = Number(result.remaining_amount);
+  const cost = Number(result.cost);
+  if (
+    typeof result.operation_id !== 'string'
+    || !Number.isFinite(consumedAmount)
+    || !Number.isFinite(remainingAmount)
+    || !Number.isFinite(cost)
+  ) {
+    raise('Сервер вернул некорректный результат использования продукта', null);
+  }
+  return {
+    operationId: result.operation_id,
+    amount: consumedAmount,
+    remainingAmount,
+    cost,
+    costComplete: Boolean(result.cost_complete)
+  };
 }
 
 export async function wasteExpiredProducts(): Promise<{ count: number; cost: number }> {

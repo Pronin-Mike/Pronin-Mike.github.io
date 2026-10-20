@@ -193,6 +193,14 @@ export interface CookResult {
   expiredWarning?: string[];
 }
 
+export interface ConsumeResult {
+  operationId: string;
+  amount: number;
+  remainingAmount: number;
+  cost: number;
+  costComplete: boolean;
+}
+
 /* -------------------------------------------------------------------------- *
  * Строки таблиц (как они лежат в PostgreSQL)
  *
@@ -451,6 +459,10 @@ export type Database = {
       delete_fridge_item: { Args: { p_item_id: string }; Returns: undefined };
       clear_fridge: { Args: Record<string, never>; Returns: number };
       waste_product: { Args: { p_item_id: string; p_amount: number }; Returns: unknown };
+      consume_product: {
+        Args: { p_item_id: string; p_amount: number; p_operation_id: string };
+        Returns: unknown;
+      };
       waste_expired_products: { Args: Record<string, never>; Returns: unknown };
       apply_fridge_import: { Args: { p_plan: unknown; p_source?: 'csv' | 'json' }; Returns: unknown };
       restore_backup: { Args: { p_fridge: unknown; p_dishes: unknown }; Returns: unknown };

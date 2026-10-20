@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MutableRefObject } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  CircleAlert,
   Eraser,
   PackageOpen,
   Pencil,
@@ -22,7 +21,7 @@ import { useToast } from '../components/Toast';
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input, Select, Tabs } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
-import { normalizeName } from '../lib/availability';
+import { normalizeName, round3 } from '../lib/availability';
 import { formatAmount, productWord } from '../lib/format';
 import { formatCost, formatMoney, formatStockUnitCost } from '../lib/pricing';
 import { planFridgeNameNormalization } from '../lib/receiptMatcher';
@@ -114,6 +113,7 @@ export default function Fridge() {
   const addDateTouched = useRef(false);
   const editDateTouched = useRef(false);
   const addNameRef = useRef<HTMLInputElement | null>(null);
+  const useOperationRef = useRef<{ itemId: string; amount: number; operationId: string } | null>(null);
 
   const sort: SortMode = searchParams.get('sort') === 'expiry' ? 'expiry' : 'name';
   const filter: FilterMode = searchParams.get('expiring') === '1' ? 'attention' : 'all';
@@ -329,6 +329,7 @@ export default function Fridge() {
   const openUse = (item: FridgeItem) => {
     setSelected(item);
     setUseAmount('');
+    useOperationRef.current = null;
     setDialog('use');
   };
 
@@ -372,9 +373,39 @@ export default function Fridge() {
     setSelected(null);
   };
 
-  const parsedUse = Number(useAmount.replace(',', '.'));
+  const rawUseAmount = Number(useAmount.replace(',', '.'));
+  const parsedUse = Number.isFinite(rawUseAmount) ? round3(rawUseAmount) : Number.NaN;
   const useValid = Boolean(selected) && Number.isFinite(parsedUse) && parsedUse > 0 && parsedUse <= (selected?.amount ?? 0);
   const useRemainder = useValid && selected ? selected.amount - parsedUse : null;
+
+  const confirmUse = async () => {
+    if (!selected || !useValid) {
+      toast.show(`Количество должно быть больше нуля и не превышать ${formatAmount(selected?.amount ?? 0)}.`, 'error');
+      return;
+    }
+    const previous = useOperationRef.current;
+    const operationId = previous?.itemId === selected.id && previous.amount === parsedUse
+      ? previous.operationId
+      : crypto.randomUUID();
+    useOperationRef.current = { itemId: selected.id, amount: parsedUse, operationId };
+
+    setBusy(true);
+    try {
+      const result = await api.consumeProduct(selected.id, parsedUse, operationId);
+      await reloadFridge();
+      toast.show(
+        `Использовано ${formatAmount(result.amount)} ${selected.unit} «${selected.name}». Стоимость: ${result.costComplete ? '' : '~'}${formatMoney(result.cost)}.`,
+        'success'
+      );
+      useOperationRef.current = null;
+      setDialog(null);
+      setSelected(null);
+    } catch (caught) {
+      toast.show(caught instanceof Error ? caught.message : 'Не удалось использовать продукт', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const dialogTitle = dialog === 'edit'
     ? 'Редактировать продукт'
@@ -569,7 +600,10 @@ export default function Fridge() {
             <Button variant="ghost" disabled={busy} onClick={() => setDialog('details')}>Отмена</Button>
           </>
         ) : dialog === 'use' ? (
-          <Button variant="ghost" onClick={() => setDialog('details')}>Вернуться к продукту</Button>
+          <>
+            <Button disabled={busy || !useValid} onClick={() => void confirmUse()} className="flex-1">Подтвердить использование</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setDialog('details')}>Отмена</Button>
+          </>
         ) : undefined}
       >
         {selected && dialog === 'details' ? (
@@ -627,11 +661,6 @@ export default function Fridge() {
               Останется: <strong className="text-ink">{useRemainder === null ? '—' : `${formatAmount(useRemainder)} ${selected.unit}`}</strong>
             </p>
             {!useValid && useAmount ? <p className="text-sm font-semibold text-berry-700">Введите количество больше нуля и не больше текущего остатка.</p> : null}
-            <div className="flex gap-3 rounded-xl border border-honey-200 bg-honey-50 p-3 text-sm leading-relaxed text-honey-800">
-              <CircleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-              <p>Операция пока недоступна: сервер не имеет отдельного RPC для обычного использования. Административная корректировка не применяется вместо расхода.</p>
-            </div>
-            <Button disabled>Подтвердить использование</Button>
           </div>
         ) : null}
 
