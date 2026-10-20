@@ -12,7 +12,9 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # GitHub Pages может отменить уже созданный deployment, если workflow
+  # завершает предыдущий запуск из-за нового push.
+  cancel-in-progress: false
 
 jobs:
   build:
