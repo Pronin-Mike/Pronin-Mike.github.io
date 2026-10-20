@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, X } from 'lucide-react';
 import { cn, IconButton } from './ui';
@@ -14,6 +14,7 @@ export interface ModalProps {
   /** Возврат к предыдущему экрану внутри того же модального сценария. */
   onBack?: () => void;
   backLabel?: string;
+  initialFocusRef?: RefObject<HTMLElement | null>;
 }
 
 const SIZES = {
@@ -67,7 +68,8 @@ export default function Modal({
   size = 'md',
   closeOnBackdrop = true,
   onBack,
-  backLabel = 'Назад'
+  backLabel = 'Назад',
+  initialFocusRef
 }: ModalProps) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -111,7 +113,7 @@ export default function Modal({
       const firstFocusable = boxRef.current?.querySelector<HTMLElement>(
         'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
       );
-      (firstFocusable ?? boxRef.current)?.focus();
+      (initialFocusRef?.current ?? firstFocusable ?? boxRef.current)?.focus();
     }, 0);
 
     return () => {
@@ -120,7 +122,7 @@ export default function Modal({
       document.removeEventListener('keydown', onKeyDown);
       previousFocus?.focus({ preventScroll: true });
     };
-  }, [open]);
+  }, [initialFocusRef, open]);
 
   if (!open) return null;
 

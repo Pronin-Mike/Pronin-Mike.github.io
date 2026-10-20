@@ -63,23 +63,6 @@ function buildInput(form: ProductFormState): FridgeInput {
   };
 }
 
-function useDesktopForm(): boolean {
-  const [desktop, setDesktop] = useState(() => (
-    typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 768px)').matches : true
-  ));
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return undefined;
-    const media = window.matchMedia('(min-width: 768px)');
-    const update = () => setDesktop(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-
-  return desktop;
-}
-
 function itemCost(item: FridgeItem) {
   const knownCost = item.totalCost ?? 0;
   const pricedAmount = item.pricedAmount ?? 0;
@@ -92,7 +75,6 @@ function itemCost(item: FridgeItem) {
 export default function Fridge() {
   const { fridge, loading, error, reload, reloadFridge } = useCookbook();
   const toast = useToast();
-  const isDesktop = useDesktopForm();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [search, setSearch] = useState('');
@@ -136,14 +118,7 @@ export default function Fridge() {
     setSearchParams(params, { replace: true });
   };
 
-  const openAdd = () => {
-    if (isDesktop) {
-      addNameRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-      addNameRef.current?.focus({ preventScroll: true });
-    } else {
-      setAddOpen(true);
-    }
-  };
+  const openAdd = () => setAddOpen(true);
 
   useEffect(() => {
     if (searchParams.get('add') !== '1') return;
@@ -151,9 +126,7 @@ export default function Fridge() {
     const params = new URLSearchParams(searchParams);
     params.delete('add');
     setSearchParams(params, { replace: true });
-    // Выполняем один раз для перехода с главной; дальнейшие query-изменения форму не переоткрывают.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesktop]);
+  }, [searchParams, setSearchParams]);
 
   const expiringCount = useMemo(() => fridge.filter((item) => {
     const status = getExpiryStatus(item.expiresAt);
@@ -421,8 +394,8 @@ export default function Fridge() {
     <div className="flex flex-col gap-5 animate-rise-in">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Продукты</h1>
-          <p className="mt-1 text-sm text-ink-soft">{loading ? 'Загружаем…' : productWord(fridge.length)}</p>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Мои продукты</h1>
+          <p className="mt-1 text-sm text-ink-soft">{loading ? 'Загружаем…' : `${productWord(fridge.length)} в холодильнике`}</p>
         </div>
         <Button onClick={openAdd} className="shrink-0">
           <Plus className="size-4" aria-hidden="true" />
@@ -447,33 +420,14 @@ export default function Fridge() {
         </Card>
       </section>
 
-      {isDesktop ? (
-        <Card className="flex flex-col gap-3">
-          <h2 className="font-display text-lg font-bold text-ink">Быстрое добавление</h2>
-          <ProductForm
-            id="product-add-inline"
-            value={addForm}
-            mode="create"
-            layout="inline"
-            busy={busy}
-            nameInputRef={addNameRef}
-            onChange={setAddForm}
-            onNameChange={(name) => suggestName(addForm, setAddForm, addDateTouched, name)}
-            onDateChange={(date) => setDate(addForm, setAddForm, addDateTouched, date)}
-            onQuickDate={(days) => quickDate(addForm, setAddForm, addDateTouched, days)}
-            onSubmit={(event) => submitForm('create', event)}
-          />
-        </Card>
-      ) : null}
-
-      <Card className="flex flex-col gap-3 p-3 sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:flex-nowrap">
+        <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+          <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted" aria-hidden="true" />
             <Input
               value={search}
               className="pl-9 pr-11"
-              placeholder="Найти продукт"
+              placeholder="Поиск продукта"
               aria-label="Найти продукт"
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -487,15 +441,6 @@ export default function Fridge() {
               </IconButton>
             ) : null}
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Select value={sort} aria-label="Сортировка продуктов" onChange={(event) => setSort(event.target.value as SortMode)}>
-              <option value="name">По названию</option>
-              <option value="expiry">По сроку</option>
-            </Select>
-            <IconButton label="Действия со списком" onClick={() => setToolsOpen(true)}>
-              <SlidersHorizontal className="size-5" aria-hidden="true" />
-            </IconButton>
-          </div>
         </div>
         <Tabs
           label="Фильтр продуктов"
@@ -506,7 +451,16 @@ export default function Fridge() {
             { value: 'attention', label: `Требуют внимания (${expiringCount})` }
           ]}
         />
-      </Card>
+        <div className="flex min-w-0 shrink-0 gap-2">
+          <Select className="min-w-0 max-w-44" value={sort} aria-label="Сортировка продуктов" onChange={(event) => setSort(event.target.value as SortMode)}>
+            <option value="name">По названию</option>
+            <option value="expiry">По сроку</option>
+          </Select>
+          <IconButton label="Действия со списком" onClick={() => setToolsOpen(true)}>
+            <SlidersHorizontal className="size-5" aria-hidden="true" />
+          </IconButton>
+        </div>
+      </div>
 
       {error && !loading ? (
         <Card className="flex flex-col items-start gap-3">
@@ -518,7 +472,7 @@ export default function Fridge() {
       {loading ? <SkeletonRows /> : null}
 
       {!loading && visible.length ? (
-        <ul className="flex flex-col gap-2">
+        <ul className="overflow-hidden rounded-2xl border border-cream-300 bg-white shadow-soft">
           {visible.map((item) => (
             <ProductRow
               key={item.id}
@@ -557,6 +511,7 @@ export default function Fridge() {
         title="Добавить продукт"
         size="md"
         onClose={() => setAddOpen(false)}
+        initialFocusRef={addNameRef}
         footer={(
           <>
             <Button type="submit" form="product-add-modal" disabled={busy} className="flex-1">Добавить продукт</Button>
@@ -569,12 +524,12 @@ export default function Fridge() {
           value={addForm}
           mode="create"
           busy={busy}
+          nameInputRef={addNameRef}
           onChange={setAddForm}
           onNameChange={(name) => suggestName(addForm, setAddForm, addDateTouched, name)}
           onDateChange={(date) => setDate(addForm, setAddForm, addDateTouched, date)}
           onQuickDate={(days) => quickDate(addForm, setAddForm, addDateTouched, days)}
           onSubmit={(event) => submitForm('create', event)}
-          showSubmit={false}
         />
       </Modal>
 
@@ -645,7 +600,6 @@ export default function Fridge() {
             onDateChange={(date) => setDate(editForm, setEditForm, editDateTouched, date)}
             onQuickDate={(days) => quickDate(editForm, setEditForm, editDateTouched, days)}
             onSubmit={(event) => submitForm('edit', event)}
-            showSubmit={false}
           />
         ) : null}
 

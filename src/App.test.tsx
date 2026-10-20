@@ -110,12 +110,16 @@ function datePlusDays(days: number): string {
 
 /** Заполняет форму добавления продукта в холодильнике. */
 function fillFridgeForm(name: string, amount: string, expiresAt?: string): HTMLButtonElement {
-  fireEvent.change(screen.getByLabelText(/^Название/), { target: { value: name } });
-  fireEvent.change(screen.getByLabelText(/^Количество/), { target: { value: amount } });
-  if (expiresAt !== undefined) {
-    fireEvent.change(screen.getByLabelText(/^Срок годности/), { target: { value: expiresAt } });
+  if (!screen.queryByRole('dialog', { name: 'Добавить продукт' })) {
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить продукт' }));
   }
-  return screen.getByRole('button', { name: 'Добавить' }) as HTMLButtonElement;
+  const dialog = screen.getByRole('dialog', { name: 'Добавить продукт' });
+  fireEvent.change(within(dialog).getByLabelText(/^Название/), { target: { value: name } });
+  fireEvent.change(within(dialog).getByLabelText(/^Количество/), { target: { value: amount } });
+  if (expiresAt !== undefined) {
+    fireEvent.change(within(dialog).getByLabelText(/^Срок годности/), { target: { value: expiresAt } });
+  }
+  return within(dialog).getByRole('button', { name: 'Добавить продукт' }) as HTMLButtonElement;
 }
 
 /** Поле срока годности в форме. */
@@ -134,7 +138,7 @@ async function openFridgePage(): Promise<void> {
   render(<App />);
   await screen.findByText('Омлет с сыром');
   fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
-  await screen.findByRole('heading', { name: 'Продукты' });
+  await screen.findByRole('heading', { name: 'Мои продукты' });
 }
 
 beforeEach(() => {
@@ -728,6 +732,39 @@ describe('Продукты v2.1', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('на ПК открывает добавление только в Modal и закрывает без сохранения', async () => {
+    await openFridgePage();
+    expect(screen.queryByRole('heading', { name: 'Быстрое добавление' })).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Добавить продукт' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'Добавить продукт' });
+    fireEvent.change(within(dialog).getByLabelText('Название продукта'), { target: { value: 'авокадо' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+
+    expect(api.addFridgeItem).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Добавить продукт' })).toBeNull();
+  });
+
+  it('переход с главной по add=1 автоматически открывает добавление', async () => {
+    window.history.replaceState(null, '', '#/fridge?add=1');
+    render(<App />);
+
+    expect(await screen.findByRole('dialog', { name: 'Добавить продукт' })).toBeTruthy();
+    expect(window.location.hash).not.toContain('add=1');
+  });
+
+  it('при ошибке добавления сохраняет поля и оставляет Modal открытым', async () => {
+    vi.mocked(api.addFridgeItem).mockRejectedValueOnce(new Error('Ошибка добавления'));
+    await openFridgePage();
+    const submit = fillFridgeForm('авокадо', '2');
+    fireEvent.click(submit);
+
+    expect(await screen.findByText('Ошибка добавления')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Добавить продукт' });
+    expect((within(dialog).getByLabelText('Название продукта') as HTMLInputElement).value).toBe('авокадо');
+    expect((within(dialog).getByLabelText('Количество') as HTMLInputElement).value).toBe('2');
+  });
+
   it('на телефоне открывает добавление в общем Modal', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,
@@ -750,9 +787,9 @@ describe('Продукты v2.1', () => {
 describe('Сроки годности', () => {
   it('передаёт общую стоимость ручной покупки', async () => {
     await openFridgePage();
-    fillFridgeForm('бананы', '500');
+    const submit = fillFridgeForm('бананы', '500');
     fireEvent.change(screen.getByLabelText(/Общая стоимость покупки, ₽/), { target: { value: '150,50' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    fireEvent.click(submit);
     await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.addFridgeItem).mock.calls[0][0].purchaseCost).toBe(150.5);
   });
@@ -760,12 +797,12 @@ describe('Сроки годности', () => {
   it('подставляет типовой срок при вводе названия и показывает бейдж', async () => {
     await openFridgePage();
 
-    fillFridgeForm('творог', '500');
+    const submit = fillFridgeForm('творог', '500');
 
     // Срок подставился сам: творог хранится 7 дней.
     expect(expiryField().value).toBe(datePlusDays(7));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    fireEvent.click(submit);
 
     await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.addFridgeItem).mock.calls[0][0].expiresAt).toBe(datePlusDays(7));
@@ -786,8 +823,8 @@ describe('Сроки годности', () => {
   it('продукт с прошедшей датой показывает блок «Просрочено»', async () => {
     await openFridgePage();
 
-    fillFridgeForm('кефир', '500', datePlusDays(-2));
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+    const submit = fillFridgeForm('кефир', '500', datePlusDays(-2));
+    fireEvent.click(submit);
 
     // Дата в прошлом — переспрашиваем и сохраняем по подтверждению.
     const dialog = await screen.findByRole('dialog', { name: 'Дата уже прошла' });
@@ -817,7 +854,7 @@ describe('Сроки годности', () => {
 
     // В холодильнике продукт тоже исчез.
     fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
-    await screen.findByRole('heading', { name: 'Продукты' });
+    await screen.findByRole('heading', { name: 'Мои продукты' });
     expect(fridgeRow('кефир')).toBeNull();
     expect(screen.getByText('яйца')).toBeTruthy();
   });

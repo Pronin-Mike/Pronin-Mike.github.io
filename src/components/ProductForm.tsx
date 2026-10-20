@@ -1,7 +1,6 @@
-import { Plus } from 'lucide-react';
 import type { FormEvent, Ref } from 'react';
 import type { Unit } from '../lib/types';
-import { Button, Field, Input, Select } from './ui';
+import { Field, Input, Select } from './ui';
 
 export interface ProductFormState {
   name: string;
@@ -16,7 +15,6 @@ export interface ProductFormProps {
   value: ProductFormState;
   mode: 'create' | 'edit';
   busy?: boolean;
-  layout?: 'inline' | 'modal';
   nameInputRef?: Ref<HTMLInputElement>;
   dateInputRef?: Ref<HTMLInputElement>;
   onChange: (next: ProductFormState) => void;
@@ -24,7 +22,6 @@ export interface ProductFormProps {
   onDateChange: (date: string) => void;
   onQuickDate: (days: number) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  showSubmit?: boolean;
 }
 
 const QUICK_DAYS = [1, 3, 7, 14, 30];
@@ -34,36 +31,34 @@ export default function ProductForm({
   value,
   mode,
   busy = false,
-  layout = 'modal',
   nameInputRef,
   dateInputRef,
   onChange,
   onNameChange,
   onDateChange,
   onQuickDate,
-  onSubmit,
-  showSubmit = true
+  onSubmit
 }: ProductFormProps) {
   const edit = mode === 'edit';
 
   return (
     <form
       id={id}
-      className={layout === 'inline'
-        ? 'grid gap-3 md:grid-cols-[minmax(10rem,2fr)_minmax(8rem,1fr)_minmax(7rem,1fr)_6rem_auto]'
-        : 'grid gap-4 sm:grid-cols-2'}
+      className="grid min-w-0 gap-4 sm:grid-cols-2"
       onSubmit={onSubmit}
     >
-      <Field label="Название" htmlFor={`${id}-name`}>
-        <Input
-          id={`${id}-name`}
-          ref={nameInputRef}
-          value={value.name}
-          placeholder="Например, молоко"
-          autoComplete="off"
-          onChange={(event) => onNameChange(event.target.value)}
-        />
-      </Field>
+      <div className="min-w-0 sm:col-span-2">
+        <Field label="Название продукта" htmlFor={`${id}-name`}>
+          <Input
+            id={`${id}-name`}
+            ref={nameInputRef}
+            value={value.name}
+            placeholder="Например, молоко"
+            autoComplete="off"
+            onChange={(event) => onNameChange(event.target.value)}
+          />
+        </Field>
+      </div>
 
       <Field label="Количество" htmlFor={`${id}-amount`}>
         <Input
@@ -88,31 +83,7 @@ export default function ProductForm({
         </Select>
       </Field>
 
-      <Field
-        label={edit ? 'Стоимость остатка, ₽' : 'Общая стоимость покупки, ₽'}
-        htmlFor={`${id}-cost`}
-        hint={edit ? 'Пустое поле сохраняет текущую оценку' : 'Необязательно; это стоимость всего указанного количества'}
-      >
-        <Input
-          id={`${id}-cost`}
-          value={value.cost}
-          inputMode="decimal"
-          placeholder="150"
-          autoComplete="off"
-          onChange={(event) => onChange({ ...value, cost: event.target.value })}
-        />
-      </Field>
-
-      {showSubmit && layout === 'inline' ? (
-        <div className="flex items-end">
-          <Button type="submit" disabled={busy} className="w-full md:w-auto">
-            <Plus className="size-4" aria-hidden="true" />
-            Добавить
-          </Button>
-        </div>
-      ) : null}
-
-      <div className={layout === 'inline' ? 'flex flex-col gap-2 md:col-span-5' : 'flex flex-col gap-2 sm:col-span-2'}>
+      <div className="min-w-0">
         <Field label="Срок годности" htmlFor={`${id}-expires`} hint="Можно оставить пустым — срок не отслеживается.">
           <Input
             id={`${id}-expires`}
@@ -122,7 +93,26 @@ export default function ProductForm({
             onChange={(event) => onDateChange(event.target.value)}
           />
         </Field>
-        <div className="scrollbar-hide flex max-w-full gap-2 overflow-x-auto pb-1">
+      </div>
+
+      <div className="min-w-0">
+        <Field
+          label={edit ? 'Стоимость остатка, ₽' : 'Общая стоимость покупки, ₽'}
+          htmlFor={`${id}-cost`}
+          hint={edit ? 'Пустое поле сохраняет текущую оценку' : 'Стоимость всего указанного количества'}
+        >
+          <Input
+            id={`${id}-cost`}
+            value={value.cost}
+            inputMode="decimal"
+            placeholder="Необязательно"
+            autoComplete="off"
+            onChange={(event) => onChange({ ...value, cost: event.target.value })}
+          />
+        </Field>
+      </div>
+
+      <div className="scrollbar-hide flex max-w-full gap-2 overflow-x-auto pb-1 sm:col-span-2">
           {QUICK_DAYS.map((days) => (
             <button
               key={days}
@@ -144,7 +134,6 @@ export default function ProductForm({
               Убрать срок
             </button>
           ) : null}
-        </div>
       </div>
     </form>
   );
