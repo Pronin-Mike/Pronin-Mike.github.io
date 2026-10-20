@@ -24,19 +24,15 @@ export interface ProductFormProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-const QUICK_DAYS = [1, 3, 7, 14, 30];
-
 export default function ProductForm({
   id,
   value,
   mode,
-  busy = false,
   nameInputRef,
   dateInputRef,
   onChange,
   onNameChange,
   onDateChange,
-  onQuickDate,
   onSubmit
 }: ProductFormProps) {
   const edit = mode === 'edit';
@@ -83,58 +79,33 @@ export default function ProductForm({
         </Select>
       </Field>
 
-      <div className="min-w-0">
-        <Field label="Срок годности" htmlFor={`${id}-expires`} hint="Можно оставить пустым — срок не отслеживается.">
-          <Input
-            id={`${id}-expires`}
-            ref={dateInputRef}
-            type="date"
-            value={value.expiresAt}
-            onChange={(event) => onDateChange(event.target.value)}
-          />
-        </Field>
-      </div>
-
-      <div className="min-w-0">
-        <Field
-          label={edit ? 'Стоимость остатка, ₽' : 'Общая стоимость покупки, ₽'}
-          htmlFor={`${id}-cost`}
-          hint={edit ? 'Пустое поле сохраняет текущую оценку' : 'Стоимость всего указанного количества'}
-        >
-          <Input
-            id={`${id}-cost`}
-            value={value.cost}
-            inputMode="decimal"
-            placeholder="Необязательно"
-            autoComplete="off"
-            onChange={(event) => onChange({ ...value, cost: event.target.value })}
-          />
-        </Field>
-      </div>
-
-      <div className="scrollbar-hide flex max-w-full gap-2 overflow-x-auto pb-1 sm:col-span-2">
-          {QUICK_DAYS.map((days) => (
-            <button
-              key={days}
-              type="button"
-              disabled={busy}
-              onClick={() => onQuickDate(days)}
-              className="min-h-11 shrink-0 rounded-[10px] border border-cream-300 bg-white px-3 text-sm font-semibold text-ink-soft transition-colors hover:bg-cream-100"
-            >
-              +{days}д
-            </button>
-          ))}
-          {value.expiresAt ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onDateChange('')}
-              className="min-h-11 shrink-0 rounded-[10px] border border-cream-300 bg-white px-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-cream-100"
-            >
-              Убрать срок
-            </button>
-          ) : null}
-      </div>
+      {edit ? (
+        <div className="min-w-0 sm:col-span-2">
+          <Field label="Срок годности" htmlFor={`${id}-expires`} hint="Можно оставить пустым — срок не отслеживается.">
+            <Input id={`${id}-expires`} ref={dateInputRef} type="date" value={value.expiresAt} onChange={(event) => onDateChange(event.target.value)} />
+          </Field>
+          <div className="mt-4">
+            <Field label="Стоимость остатка, ₽" htmlFor={`${id}-cost`} hint="Пустое поле сохраняет текущую оценку">
+              <Input id={`${id}-cost`} value={value.cost} inputMode="decimal" placeholder="Необязательно" autoComplete="off" onChange={(event) => onChange({ ...value, cost: event.target.value })} />
+            </Field>
+          </div>
+        </div>
+      ) : (
+        <details className="group sm:col-span-2">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between rounded-xl border border-cream-300 bg-white px-3 text-sm font-bold text-ink transition-colors hover:bg-cream-100">
+            Срок годности и стоимость
+            <span aria-hidden="true" className="text-lg leading-none text-ink-muted transition-transform group-open:rotate-180">⌄</span>
+          </summary>
+          <div className="mt-3 grid gap-4 rounded-xl border border-cream-300 bg-cream-100 p-3 sm:grid-cols-2">
+            <Field label="Срок годности" htmlFor={`${id}-expires`} hint="Можно оставить пустым — срок не отслеживается.">
+              <Input id={`${id}-expires`} ref={dateInputRef} type="date" value={value.expiresAt} onChange={(event) => onDateChange(event.target.value)} />
+            </Field>
+            <Field label="Общая стоимость покупки, ₽" htmlFor={`${id}-cost`} hint="Стоимость всего указанного количества">
+              <Input id={`${id}-cost`} value={value.cost} inputMode="decimal" placeholder="Необязательно" autoComplete="off" onChange={(event) => onChange({ ...value, cost: event.target.value })} />
+            </Field>
+          </div>
+        </details>
+      )}
     </form>
   );
 }

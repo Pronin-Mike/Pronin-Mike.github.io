@@ -592,13 +592,13 @@ describe('Продукты v2.1', () => {
     expect(fridgeRow('кефир')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Очистить поиск' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Требуют внимания (1)' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Требуют внимания' }));
     expect(fridgeRow('кефир')).toBeTruthy();
     expect(fridgeRow('Яблоки')).toBeNull();
     expect(window.location.hash).toContain('expiring=1');
     expect(window.location.hash).toContain('sort=expiry');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Все (3)' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Все' }));
     fireEvent.change(screen.getByLabelText('Сортировка продуктов'), { target: { value: 'expiry' } });
     const rows = screen.getAllByRole('listitem');
     expect(within(rows[0]).getByRole('button', { name: 'кефир' })).toBeTruthy();

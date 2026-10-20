@@ -403,16 +403,16 @@ export default function Fridge() {
         </Button>
       </header>
 
-      <section aria-label="Сводка запасов" className="grid grid-cols-3 gap-2 sm:gap-3">
-        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+      <section aria-label="Сводка запасов" className="grid grid-cols-3 gap-2 sm:gap-4">
+        <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block truncate text-xs font-semibold text-ink-muted">Позиций</span>
           <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : fridge.length}</strong>
         </Card>
-        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+        <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block truncate text-xs font-semibold text-ink-muted">Требуют внимания</span>
           <strong className="mt-1 block text-2xl font-extrabold tabular-nums text-ink sm:text-3xl">{loading ? '—' : expiringCount}</strong>
         </Card>
-        <Card className="min-w-0 p-3 shadow-none sm:p-4">
+        <Card className="flex min-h-[105px] min-w-0 flex-col justify-between p-3 shadow-none sm:min-h-[117px] sm:p-5">
           <span className="block truncate text-xs font-semibold text-ink-muted">Стоимость</span>
           <strong className="mt-1 block truncate text-lg font-extrabold text-ink sm:text-2xl">
             {loading ? '—' : formatCost({ knownCost: knownInventoryCost, status: inventoryCostStatus })}
@@ -447,8 +447,8 @@ export default function Fridge() {
           value={filter}
           onChange={setFilter}
           items={[
-            { value: 'all', label: `Все (${fridge.length})` },
-            { value: 'attention', label: `Требуют внимания (${expiringCount})` }
+            { value: 'all', label: 'Все' },
+            { value: 'attention', label: 'Требуют внимания' }
           ]}
         />
         <div className="flex min-w-0 shrink-0 gap-2">
@@ -513,10 +513,7 @@ export default function Fridge() {
         onClose={() => setAddOpen(false)}
         initialFocusRef={addNameRef}
         footer={(
-          <>
-            <Button type="submit" form="product-add-modal" disabled={busy} className="flex-1">Добавить продукт</Button>
-            <Button variant="ghost" disabled={busy} onClick={() => setAddOpen(false)}>Отмена</Button>
-          </>
+          <Button type="submit" form="product-add-modal" disabled={busy} className="w-full">Добавить продукт</Button>
         )}
       >
         <ProductForm
