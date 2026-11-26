@@ -117,7 +117,9 @@ export function IngredientViewRow({ ingredient, missing, expiresAt = null, cost 
             ? 'нет в холодильнике'
             : missing.reason === 'unit'
               ? `нужен ${missing.unit}`
-              : `есть ${formatAmount(missing.have)} ${missing.unit}`}
+              : missing.reason === 'expired'
+                ? 'продукт просрочен'
+                : `есть ${formatAmount(missing.have)} ${missing.unit}`}
         </span>
       ) : null}
       <ShelfLifeBadge expiresAt={expiresAt} className="w-full md:w-auto" />

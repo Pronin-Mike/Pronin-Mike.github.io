@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download, FileUp, Refrigerator, Upload } from 'lucide-react';
-import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
 import { useToast } from './Toast';
 import { Button, Card, Field, Textarea, cn } from './ui';
@@ -54,14 +53,11 @@ export default function FridgeCsvImport() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [mode, setMode] = useState<FridgeImportMode>('merge');
   const [busy, setBusy] = useState(false);
-  const [clearOpen, setClearOpen] = useState(false);
 
   const plan = useMemo(
     () => (parsed ? planFridgeImport(parsed.items.map((row) => row.item), fridge, mode, new Date()) : null),
     [parsed, fridge, mode]
   );
-
-  const baseUrl = import.meta.env.BASE_URL;
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -154,23 +150,15 @@ export default function FridgeCsvImport() {
       <div className="flex flex-wrap gap-2">
         <Button variant="ghost" onClick={() => fileRef.current?.click()}>
           <FileUp className="size-4" aria-hidden="true" />
-          Выбрать CSV-файл
+          Вставить файл CSV
         </Button>
         <Button
           variant="ghost"
           onClick={() => downloadTextFile('cookbook-fridge-template.csv', fridgeCsvTemplate(), 'text/csv')}
         >
           <Download className="size-4" aria-hidden="true" />
-          Скачать шаблон
+          Скачать пример CSV
         </Button>
-        <a
-          href={`${baseUrl}examples/sample-fridge.csv`}
-          download
-          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-cream-300 bg-white px-4 text-[15px] font-semibold text-ink-soft transition hover:bg-cream-100"
-        >
-          <Download className="size-4" aria-hidden="true" />
-          Пример
-        </a>
         <input
           ref={fileRef}
           type="file"
@@ -194,7 +182,7 @@ export default function FridgeCsvImport() {
 
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleCheck} disabled={busy}>
-          Проверить
+          Добавить
         </Button>
         <Button
           variant="ghost"
@@ -210,14 +198,6 @@ export default function FridgeCsvImport() {
         <Button variant="ghost" onClick={handleExport} disabled={busy}>
           <Upload className="size-4" aria-hidden="true" />
           Экспорт холодильника
-        </Button>
-        <Button
-          variant="ghost"
-          className="text-berry-500"
-          disabled={busy || !fridge.length}
-          onClick={() => setClearOpen(true)}
-        >
-          Очистить холодильник
         </Button>
       </div>
 
@@ -377,29 +357,6 @@ export default function FridgeCsvImport() {
         ) : null}
       </Modal>
 
-      <ConfirmDialog
-        open={clearOpen}
-        title="Очистить холодильник?"
-        description={`Будут удалены все продукты (${productWord(fridge.length)}). Блюда останутся, но станут недоступными.`}
-        busy={busy}
-        actions={[
-          { label: 'Очистить', value: 'clear', variant: 'danger' },
-          { label: 'Отмена', value: 'cancel', variant: 'ghost' }
-        ]}
-        onResolve={(value) => {
-          setClearOpen(false);
-          if (value !== 'clear') return;
-          setBusy(true);
-          void api
-            .clearFridge()
-            .then(() => reloadFridge())
-            .then(() => toast.show('Холодильник очищен.', 'success'))
-            .catch((caught: unknown) =>
-              toast.show(caught instanceof Error ? caught.message : 'Не удалось очистить', 'error')
-            )
-            .finally(() => setBusy(false));
-        }}
-      />
     </Card>
   );
 }

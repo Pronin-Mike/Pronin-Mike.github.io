@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, ImagePlus, Plus, Save, Trash2, Utensils } from 'lucide-react';
 import { IngredientEditorRow } from '../components/IngredientRow';
 import { FullScreenSpinner, SkeletonRows } from '../components/Loading';
 import { useToast } from '../components/Toast';
@@ -94,6 +94,16 @@ export default function DishEdit() {
     });
   };
 
+  const moveIngredient = (index: number, direction: -1 | 1) => {
+    setForm((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.ingredients.length) return prev;
+      const ingredients = [...prev.ingredients];
+      [ingredients[index], ingredients[target]] = [ingredients[target], ingredients[index]];
+      return { ...prev, ingredients };
+    });
+  };
+
   /** Выбор подсказки: подставляем и название, и единицу из холодильника. */
   const pickIngredient = (index: number, suggestion: IngredientSuggestion) => {
     updateIngredient(index, { name: suggestion.name, unit: suggestion.unit });
@@ -112,6 +122,16 @@ export default function DishEdit() {
     setForm((prev) => {
       const next = prev.steps.filter((_, position) => position !== index);
       return { ...prev, steps: next.length ? next : [''] };
+    });
+  };
+
+  const moveStep = (index: number, direction: -1 | 1) => {
+    setForm((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.steps.length) return prev;
+      const steps = [...prev.steps];
+      [steps[index], steps[target]] = [steps[target], steps[index]];
+      return { ...prev, steps };
     });
   };
 
@@ -243,6 +263,14 @@ export default function DishEdit() {
       </Card>
 
       <Card className="flex flex-col gap-3">
+        <SectionTitle>Фотография</SectionTitle>
+        <div className="grid aspect-[4/3] max-w-md place-items-center rounded-2xl border border-dashed border-cream-400 bg-cream-100 text-terra-500">
+          <div className="text-center"><Utensils className="mx-auto size-10" /><p className="mt-2 text-sm font-bold text-ink-soft">Фотография не добавлена</p></div>
+        </div>
+        <Button type="button" variant="ghost" disabled title="Требуется согласованная настройка Supabase Storage" className="self-start"><ImagePlus className="size-4" />Загрузка фото будет доступна после настройки Storage</Button>
+      </Card>
+
+      <Card className="flex flex-col gap-3">
         <SectionTitle count={form.ingredients.length}>Ингредиенты</SectionTitle>
         <p className="text-xs text-ink-muted">
           Начните вводить название — подскажем продукты из холодильника вместе с их единицей
@@ -250,16 +278,10 @@ export default function DishEdit() {
         </p>
         <div className="flex flex-col gap-2">
           {form.ingredients.map((ingredient, index) => (
-            <IngredientEditorRow
-              key={index}
-              ingredient={ingredient}
-              index={index}
-              disabled={busy}
-              suggestions={suggestions}
-              onChange={updateIngredient}
-              onRemove={removeIngredient}
-              onPick={pickIngredient}
-            />
+            <div key={index} className="flex items-center gap-1">
+              <div className="flex flex-col"><Button type="button" variant="ghost" size="sm" className="size-8 !min-h-8 !px-0" disabled={busy || index === 0} aria-label={`Поднять ингредиент №${index + 1}`} onClick={() => moveIngredient(index, -1)}><ArrowUp className="size-3.5" /></Button><Button type="button" variant="ghost" size="sm" className="size-8 !min-h-8 !px-0" disabled={busy || index === form.ingredients.length - 1} aria-label={`Опустить ингредиент №${index + 1}`} onClick={() => moveIngredient(index, 1)}><ArrowDown className="size-3.5" /></Button></div>
+              <div className="min-w-0 flex-1"><IngredientEditorRow ingredient={ingredient} index={index} disabled={busy} suggestions={suggestions} onChange={updateIngredient} onRemove={removeIngredient} onPick={pickIngredient} /></div>
+            </div>
           ))}
         </div>
         <Button variant="ghost" onClick={addIngredient} disabled={busy}>
@@ -284,6 +306,7 @@ export default function DishEdit() {
                 aria-label={`Шаг ${index + 1}`}
                 onChange={(event) => updateStep(index, event.target.value)}
               />
+              <div className="flex flex-col"><Button type="button" variant="ghost" size="sm" className="size-8 !min-h-8 !px-0" disabled={busy || index === 0} aria-label={`Поднять шаг ${index + 1}`} onClick={() => moveStep(index, -1)}><ArrowUp className="size-3.5" /></Button><Button type="button" variant="ghost" size="sm" className="size-8 !min-h-8 !px-0" disabled={busy || index === form.steps.length - 1} aria-label={`Опустить шаг ${index + 1}`} onClick={() => moveStep(index, 1)}><ArrowDown className="size-3.5" /></Button></div>
               <Button
                 variant="ghost"
                 size="sm"
@@ -326,14 +349,8 @@ export default function DishEdit() {
       <div className="sticky bottom-20 z-10 flex flex-wrap gap-2 rounded-2xl border border-cream-300 bg-white/95 p-3 shadow-lift backdrop-blur md:static md:border-0 md:bg-transparent md:p-0 md:shadow-none">
         <Button type="submit" size="lg" disabled={busy} className="flex-1 md:flex-none">
           <Save className="size-4" aria-hidden="true" />
-          {busy ? 'Сохраняем…' : 'Сохранить'}
+          {busy ? 'Сохраняем…' : isEdit ? 'Сохранить изменения' : 'Создать рецепт'}
         </Button>
-        <Link
-          to={backTo}
-          className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full border border-cream-300 bg-white px-4 font-semibold text-ink-soft transition hover:bg-cream-100 md:flex-none"
-        >
-          Отмена
-        </Link>
       </div>
     </form>
   );

@@ -17,6 +17,7 @@ import type {
   Unit
 } from './types';
 import { isUnit } from './types';
+import { getExpiryStatus } from './shelfLife';
 
 /** Погрешность сравнения дробных количеств. */
 const EPS = 1e-9;
@@ -115,6 +116,17 @@ export function checkDish(
         unit: ingredient.unit,
         reason: 'short'
       });
+      continue;
+    }
+
+    if (getExpiryStatus(product.expiresAt) === 'expired') {
+      missing.push({
+        name: ingredient.name,
+        need,
+        have: round3(product.amount),
+        unit: ingredient.unit,
+        reason: 'expired'
+      });
     }
   }
 
@@ -133,6 +145,7 @@ export function checkDish(
 /** Читаемое пояснение по одному недостающему ингредиенту. */
 export function formatMissing(item: MissingIngredient): string {
   if (item.reason === 'absent') return `${item.name} ${item.need} ${item.unit}`;
+  if (item.reason === 'expired') return `${item.name} ${item.need} ${item.unit} (просрочено)`;
   if (item.reason === 'unit') {
     return `${item.name} ${item.need} ${item.unit} (в холодильнике ${item.actualUnit ?? '?'})`;
   }

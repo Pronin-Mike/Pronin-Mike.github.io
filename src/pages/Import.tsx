@@ -22,6 +22,15 @@ function describeBackup(file: Partial<BackupFile>): string {
   return `${dishWord(dishes)} и ${fridge} ${fridge === 1 ? 'продукт' : 'продуктов'}`;
 }
 
+function backupValidationError(file: Partial<BackupFile>): string | null {
+  if (file.app !== 'home-cookbook') return 'Файл создан другим приложением или повреждён.';
+  if (file.version !== 2) return `Версия резервной копии ${String(file.version ?? 'не указана')} не поддерживается.`;
+  if (!Array.isArray(file.fridge_items) || !Array.isArray(file.dishes) || !Array.isArray(file.dish_ingredients)) {
+    return 'В резервной копии отсутствуют обязательные разделы данных.';
+  }
+  return null;
+}
+
 export default function Import() {
   const { sections, dishes, fridge, reload } = useCookbook();
   const toast = useToast();
@@ -34,14 +43,13 @@ export default function Import() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingBackup, setPendingBackup] = useState<Partial<BackupFile> | null>(null);
+  const [csvTab, setCsvTab] = useState<'fridge' | 'recipes'>('fridge');
 
   const sectionTitles = useMemo(() => {
     const map = new Map<string, string>();
     sections.forEach((section) => map.set(section.id, section.title));
     return map;
   }, [sections]);
-
-  const baseUrl = import.meta.env.BASE_URL;
 
   /* ----------------------------- CSV: блюда ----------------------------- */
 
@@ -114,8 +122,9 @@ export default function Import() {
       const raw = await readFileAsText(file);
       const data = JSON.parse(raw) as Partial<BackupFile>;
 
-      if (!data || typeof data !== 'object' || !Array.isArray(data.dishes)) {
-        toast.show('Файл не похож на бэкап книги (нет массива dishes).', 'error');
+      const validationError = !data || typeof data !== 'object' ? 'Файл не содержит объект резервной копии.' : backupValidationError(data);
+      if (validationError) {
+        toast.show(validationError, 'error');
         return;
       }
 
@@ -156,20 +165,25 @@ export default function Import() {
   return (
     <div className="flex flex-col gap-4 animate-rise-in">
       <header>
-        <h1 className="font-display text-3xl text-ink">Импорт и бэкап</h1>
+        <h1 className="font-display text-3xl text-ink">Импорт CSV и резервные копии</h1>
         <p className="mt-1 text-sm text-ink-soft">
           Сейчас в базе: {dishWord(dishes.length)} и {fridge.length} продуктов.
         </p>
       </header>
 
-      {/* A. Продукты из CSV */}
-      <FridgeCsvImport />
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-cream-300 bg-white p-1" role="tablist" aria-label="Тип импорта CSV">
+        <button role="tab" aria-selected={csvTab === 'fridge'} className={cn('min-h-10 flex-1 whitespace-nowrap rounded-lg px-4 text-sm font-bold', csvTab === 'fridge' ? 'bg-terra-100 text-terra-700' : 'text-ink-soft')} onClick={() => setCsvTab('fridge')}>В холодильник</button>
+        <button role="tab" aria-selected={csvTab === 'recipes'} className={cn('min-h-10 flex-1 whitespace-nowrap rounded-lg px-4 text-sm font-bold', csvTab === 'recipes' ? 'bg-terra-100 text-terra-700' : 'text-ink-soft')} onClick={() => setCsvTab('recipes')}>В рецепты</button>
+      </div>
+
+      {/* A. Продукты из CSV. Компонент не размонтируется, поэтому текст сохраняется между вкладками. */}
+      <div className={csvTab === 'fridge' ? 'block' : 'hidden'}><FridgeCsvImport /></div>
 
       {/* B. Блюда из CSV */}
-      <Card className="flex flex-col gap-3">
+      <Card className={csvTab === 'recipes' ? 'flex flex-col gap-3' : 'hidden'}>
         <h2 className="flex items-center gap-2 font-display text-lg text-ink">
           <FileSpreadsheet className="size-5 text-terra-500" aria-hidden="true" />
-          Блюда из CSV
+          Рецепты из CSV
         </h2>
         <p className="text-sm leading-relaxed text-ink-soft">
           Колонки: <code className="rounded bg-cream-100 px-1.5 py-0.5">title,section,ingredients,time,steps,notes</code>.
@@ -185,23 +199,15 @@ export default function Import() {
         <div className="flex flex-wrap gap-2">
           <Button variant="ghost" onClick={() => csvInputRef.current?.click()}>
             <FileUp className="size-4" aria-hidden="true" />
-            Выбрать CSV-файл
+            Вставить файл CSV
           </Button>
           <Button
             variant="ghost"
             onClick={() => downloadTextFile('cookbook-template.csv', dishesCsvTemplate(), 'text/csv')}
           >
             <Download className="size-4" aria-hidden="true" />
-            Скачать шаблон
+            Скачать пример CSV
           </Button>
-          <a
-            href={`${baseUrl}examples/sample-recipes.csv`}
-            download
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-cream-300 bg-white px-4 text-[15px] font-semibold text-ink-soft transition hover:bg-cream-100"
-          >
-            <Download className="size-4" aria-hidden="true" />
-            Пример
-          </a>
           <input
             ref={csvInputRef}
             type="file"
@@ -225,7 +231,7 @@ export default function Import() {
 
         <div className="flex flex-wrap gap-2">
           <Button onClick={handleCheck} disabled={busy}>
-            Проверить
+            Добавить
           </Button>
           <Button
             variant="ghost"
@@ -241,11 +247,11 @@ export default function Import() {
         </div>
       </Card>
 
-      {/* JSON */}
+      {/* JSON — отдельная секция, не часть CSV-вкладок. */}
       <Card className="flex flex-col gap-3">
         <h2 className="flex items-center gap-2 font-display text-lg text-ink">
           <Upload className="size-5 text-terra-500" aria-hidden="true" />
-          JSON-бэкап
+          Резервные копии
         </h2>
         <p className="text-sm leading-relaxed text-ink-soft">
           Экспорт выгружает холодильник, блюда и ингредиенты одним файлом. Импорт полностью заменяет
@@ -372,7 +378,7 @@ export default function Import() {
         title="Заменить базу из файла?"
         description={
           pendingBackup
-            ? `В файле: ${describeBackup(pendingBackup)}. Текущие данные (${dishWord(dishes.length)} и ${fridge.length} продуктов) будут удалены.`
+            ? `Версия: ${pendingBackup.version}. Создан: ${pendingBackup.exportedAt ? new Date(pendingBackup.exportedAt).toLocaleString('ru-RU') : 'время не указано'}. В файле: ${describeBackup(pendingBackup)}. Текущие данные (${dishWord(dishes.length)} и ${fridge.length} продуктов) будут атомарно заменены серверной функцией.`
             : ''
         }
         busy={busy}

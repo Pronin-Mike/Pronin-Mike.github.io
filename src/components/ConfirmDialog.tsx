@@ -21,6 +21,7 @@ export interface ConfirmDialogProps {
   /** null приходит при закрытии по Esc/фону — это «отмена». */
   onResolve: (value: string | null) => void;
   busy?: boolean;
+  layer?: 'default' | 'cooking';
 }
 
 export default function ConfirmDialog({
@@ -29,13 +30,15 @@ export default function ConfirmDialog({
   description,
   actions,
   onResolve,
-  busy = false
+  busy = false,
+  layer = 'default'
 }: ConfirmDialogProps) {
   return (
     <Modal
       open={open}
       title={title}
       size="sm"
+      layer={layer}
       onClose={() => onResolve(null)}
       footer={actions.map((action) => (
         <Button

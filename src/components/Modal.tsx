@@ -15,6 +15,7 @@ export interface ModalProps {
   onBack?: () => void;
   backLabel?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  layer?: 'default' | 'cooking';
 }
 
 const SIZES = {
@@ -70,7 +71,8 @@ export default function Modal({
   closeOnBackdrop = true,
   onBack,
   backLabel = 'Назад',
-  initialFocusRef
+  initialFocusRef,
+  layer = 'default'
 }: ModalProps) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -129,7 +131,7 @@ export default function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex animate-fade-in items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-4"
+      className={cn('fixed inset-0 flex animate-fade-in items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-4', layer === 'cooking' ? 'z-[220]' : 'z-50')}
       onClick={(event) => {
         if (closeOnBackdrop && event.target === event.currentTarget) onClose();
       }}

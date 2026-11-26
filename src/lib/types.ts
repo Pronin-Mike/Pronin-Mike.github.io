@@ -167,7 +167,7 @@ export interface MissingIngredient {
   have: number;
   unit: Unit;
   /** 'absent' — продукта нет, 'unit' — другая единица, 'short' — мало. */
-  reason: 'absent' | 'unit' | 'short';
+  reason: 'absent' | 'unit' | 'short' | 'expired';
   /** Единица, которая есть в холодильнике (для reason === 'unit'). */
   actualUnit?: Unit;
 }

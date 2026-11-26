@@ -45,6 +45,7 @@ export default function ReceiptScan() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Receipt | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<{ file: File; source: ReceiptSource; url: string | null } | null>(null);
 
   const reloadHistory = async () => setHistory(await api.fetchReceipts());
 
@@ -60,6 +61,21 @@ export default function ReceiptScan() {
       })
       .catch((caught) => setStorageError(errorMessage(caught)));
   }, []);
+
+  useEffect(() => () => {
+    if (selectedFile?.url) URL.revokeObjectURL(selectedFile.url);
+  }, [selectedFile]);
+
+  const selectFile = (file: File, nextSource: ReceiptSource) => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLocaleLowerCase().endsWith('.pdf');
+    const isImage = /^image\/(jpeg|png|webp)$/.test(file.type);
+    if (!isPdf && !isImage) {
+      setError('Поддерживаются JPEG, PNG, WebP и PDF.');
+      return;
+    }
+    setSelectedFile({ file, source: nextSource, url: isImage && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null });
+    setError(null);
+  };
 
   const importPlan = useMemo(() => {
     const rows = items
@@ -86,6 +102,7 @@ export default function ReceiptScan() {
     setDraftId(null);
     setError(null);
     setImportError(null);
+    setSelectedFile(null);
   };
 
   const handleFile = async (file: File, nextSource: ReceiptSource) => {
@@ -251,16 +268,27 @@ export default function ReceiptScan() {
       <Card className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <Button disabled={busy} onClick={() => cameraRef.current?.click()}>
-            <Camera className="size-4" aria-hidden="true" /> Сфотографировать чек
+            <Camera className="size-4" aria-hidden="true" /> Сделать фото
           </Button>
           <Button variant="ghost" disabled={busy} onClick={() => uploadRef.current?.click()}>
-            <Upload className="size-4" aria-hidden="true" /> Загрузить файл
+            <Upload className="size-4" aria-hidden="true" /> Выбрать изображение
           </Button>
           <input ref={cameraRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
-            onChange={(event) => event.target.files?.[0] && void handleFile(event.target.files[0], 'camera')} />
+            onChange={(event) => event.target.files?.[0] && selectFile(event.target.files[0], 'camera')} />
           <input ref={uploadRef} className="hidden" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf"
-            onChange={(event) => event.target.files?.[0] && void handleFile(event.target.files[0], 'upload')} />
+            onChange={(event) => event.target.files?.[0] && selectFile(event.target.files[0], 'upload')} />
         </div>
+
+        {selectedFile ? (
+          <div className="rounded-2xl border border-cream-300 bg-cream-50 p-3">
+            {selectedFile.url ? <img src={selectedFile.url} alt="Предпросмотр чека" className="mx-auto max-h-[420px] w-auto max-w-full rounded-xl border border-cream-300 object-contain" /> : <div className="grid min-h-32 place-items-center rounded-xl bg-white text-center text-sm text-ink-soft"><FileText className="mb-2 size-8" /><span>{selectedFile.file.name}</span></div>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button disabled={busy} onClick={() => void handleFile(selectedFile.file, selectedFile.source)}><ScanLine className="size-4" />Распознать</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => selectedFile.source === 'camera' ? cameraRef.current?.click() : uploadRef.current?.click()}>{selectedFile.source === 'camera' ? 'Переснять' : 'Выбрать другое изображение'}</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => setSelectedFile(null)}>Отмена</Button>
+            </div>
+          </div>
+        ) : null}
 
         {progress && (
           <div role="status" className="space-y-1">

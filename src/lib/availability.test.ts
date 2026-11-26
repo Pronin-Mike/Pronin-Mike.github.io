@@ -83,6 +83,15 @@ describe('checkDish', () => {
     expect(availability.missing[0].have).toBe(0);
   });
 
+  it('просроченный продукт не считается безопасно доступным', () => {
+    const dish = makeDish([{ name: 'сыр', amount: 50, unit: 'г', sortOrder: 0 }]);
+    const expiredFridge: FridgeItem[] = [{ ...fridge[1], expiresAt: '2000-01-01' }];
+    const availability = checkDish(dish, expiredFridge);
+    expect(availability.available).toBe(false);
+    expect(availability.missing[0].reason).toBe('expired');
+    expect(formatMissing(availability.missing[0])).toContain('просрочено');
+  });
+
   it('собирает список недостающего и текст для бейджа', () => {
     const dish = makeDish([
       { name: 'яйца', amount: 3, unit: 'шт', sortOrder: 0 },

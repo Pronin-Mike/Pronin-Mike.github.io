@@ -140,7 +140,7 @@ function fridgeRow(name: string): HTMLElement | null {
 /** Переход на страницу холодильника. */
 async function openFridgePage(): Promise<void> {
   render(<App />);
-  await screen.findByText('Омлет с сыром');
+  await screen.findByRole('heading', { name: 'Мои рецепты' });
   fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
   await screen.findByRole('heading', { name: 'Мои продукты' });
 }
@@ -148,6 +148,7 @@ async function openFridgePage(): Promise<void> {
 beforeEach(() => {
   // HashRouter читает window.location, а он живёт между тестами одного файла
   window.history.replaceState(null, '', '#/recipes');
+  localStorage.clear();
 
   fridge = [
     { id: 'p1', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null },
@@ -245,28 +246,34 @@ afterEach(() => {
 });
 
 describe('Recipes', () => {
-  it('показывает доступные и недоступные блюда, блокируя кнопку', async () => {
+  it('переключает только режимы одной и трёх карточек и сохраняет выбор', async () => {
+    render(<App />);
+    await screen.findByText('Омлет с сыром');
+    const one = screen.getByRole('button', { name: 'Одна карточка в ряд' });
+    const three = screen.getByRole('button', { name: 'Три карточки в ряд' });
+    expect(screen.queryByRole('button', { name: /Две карточки/ })).toBeNull();
+    fireEvent.click(one);
+    expect(one.getAttribute('aria-pressed')).toBe('true');
+    expect(localStorage.getItem('recipe-card-mode')).toBe('1');
+    fireEvent.click(three);
+    expect(three.getAttribute('aria-pressed')).toBe('true');
+  });
+  it('показывает доступные и недоступные блюда без прямого списания из карточки', async () => {
     render(<App />);
 
     expect(await screen.findByText('Омлет с сыром')).toBeTruthy();
     expect(screen.getByText('Борщ')).toBeTruthy();
 
-    const omeletteButton = within(cardByTitle('Омлет с сыром')).getByRole('button', {
-      name: 'Приготовить'
-    });
-    expect((omeletteButton as HTMLButtonElement).disabled).toBe(false);
-
-    const borschCard = cardByTitle('Борщ');
-    const borschButton = within(borschCard).getByRole('button', { name: 'Приготовить' });
-    expect((borschButton as HTMLButtonElement).disabled).toBe(true);
-    expect(within(borschCard).getByText('Не хватает: свёкла 300 г')).toBeTruthy();
+    expect(within(cardByTitle('Омлет с сыром')).getByText('Можно приготовить')).toBeTruthy();
+    expect(within(cardByTitle('Борщ')).getByText('Не хватает ингредиентов')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Приготовить' })).toBeNull();
   });
 
-  it('фильтр «Что приготовить» оставляет только доступные блюда', async () => {
+  it('фильтр доступности оставляет только доступные блюда', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Что приготовить/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Можно приготовить' }));
 
     await waitFor(() => {
       expect(screen.queryByText('Борщ')).toBeNull();
@@ -278,7 +285,7 @@ describe('Recipes', () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    const search = screen.getByLabelText('Поиск по блюду или ингредиенту');
+    const search = screen.getByLabelText('Поиск рецепта');
 
     fireEvent.change(search, { target: { value: 'свёкла' } });
     await waitFor(() => expect(screen.queryByText('Омлет с сыром')).toBeNull());
@@ -289,40 +296,32 @@ describe('Recipes', () => {
     expect(screen.getByText('Омлет с сыром')).toBeTruthy();
   });
 
-  it('приготовление вызывает cook_dish и обновляет карточки', async () => {
+  it('открывает пошаговый режим и не списывает продукты при навигации', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    // после готовки яйца закончились
-    vi.mocked(api.cookDish).mockImplementation(async () => {
-      fridge = [{ id: 'p2', name: 'сыр', amount: 250, unit: 'г', updatedAt: null, expiresAt: null }];
-      return { success: true, missing: [] };
-    });
-
-    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('button', { name: 'Приготовить' }));
-
-    await waitFor(() => {
-      const card = cardByTitle('Омлет с сыром');
-      const button = within(card).getByRole('button', { name: 'Приготовить' });
-      expect((button as HTMLButtonElement).disabled).toBe(true);
-      expect(within(card).getByText(/Не хватает:/)).toBeTruthy();
-    });
-
-    expect(api.cookDish).toHaveBeenCalledWith('d-omlet');
+    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть' }));
+    const start = await screen.findByRole('button', { name: 'Начать готовить' });
+    expect((start as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(start);
+    expect(await screen.findByRole('dialog', { name: 'Готовим: Омлет с сыром' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Подготовка ингредиентов' })).toBeTruthy();
+    expect(api.cookDish).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Начать готовить' })[1]);
+    expect(await screen.findByRole('heading', { name: 'Шаг 1 из 2' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
+    expect(await screen.findByRole('heading', { name: 'Шаг 2 из 2' })).toBeTruthy();
+    expect(api.cookDish).not.toHaveBeenCalled();
   });
 
-  it('сообщает о нехватке продуктов, если cook_dish вернул success:false', async () => {
+  it('не активирует небезопасное быстрое списание до миграции', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    vi.mocked(api.cookDish).mockResolvedValue({
-      success: false,
-      missing: [{ name: 'сыр', need: 50, have: 0, unit: 'г', reason: 'absent' }]
-    });
-
-    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('button', { name: 'Приготовить' }));
-
-    expect(await screen.findByText('Не хватает: сыр 50 г')).toBeTruthy();
+    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть' }));
+    const quick = await screen.findByRole('button', { name: 'Приготовить сразу' });
+    expect((quick as HTMLButtonElement).disabled).toBe(true);
+    expect(api.cookDish).not.toHaveBeenCalled();
   });
 });
 
@@ -505,7 +504,7 @@ describe('Импорт холодильника из CSV', () => {
     fireEvent.change(fridgeTextarea(), {
       target: { value: 'name,amount,unit\nмука,2000,г\nяйца,12,шт' }
     });
-    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Добавить' }));
 
     expect(await screen.findByText('Готово к импорту: 2 продукта')).toBeTruthy();
     expect(screen.getByText('Строк данных: 2')).toBeTruthy();
@@ -531,7 +530,7 @@ describe('Импорт холодильника из CSV', () => {
     fireEvent.change(fridgeTextarea(), {
       target: { value: 'name,amount,unit\nмука,2000,г\nяйца,12,шт' }
     });
-    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Добавить' }));
     expect(await screen.findByText('Готово к импорту: 2 продукта')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('radio', { name: /Прибавлять к текущему количеству/ }));
@@ -553,7 +552,7 @@ describe('Импорт холодильника из CSV', () => {
     fireEvent.change(fridgeTextarea(), {
       target: { value: 'name,amount,unit\nмука,1000,кг\nтворог,400,г' }
     });
-    fireEvent.click(within(card).getByRole('button', { name: 'Проверить' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Добавить' }));
 
     expect(await screen.findByText('Ошибок: 1')).toBeTruthy();
     expect(screen.getByText('Готово к импорту: 1 продукт')).toBeTruthy();
@@ -567,6 +566,18 @@ describe('Импорт холодильника из CSV', () => {
       { name: 'творог', amount: 400, unit: 'г', expiresAt: datePlusDays(7) }
     ]);
     expect(plan.counts).toEqual({ added: 1, updated: 0, summed: 0, skipped: 0 });
+  });
+
+  it('сохраняет введённый CSV при переключении вкладок', async () => {
+    await openImportPage();
+    fireEvent.change(fridgeTextarea(), { target: { value: 'name,amount,unit\nрис,500,г' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'В рецепты' }));
+    const recipesText = screen.getByLabelText('…или вставьте CSV прямо сюда', { selector: '#csv-text' });
+    fireEvent.change(recipesText, { target: { value: 'title,section,ingredients,time,steps,notes' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'В холодильник' }));
+    expect((fridgeTextarea() as HTMLTextAreaElement).value).toContain('рис,500,г');
+    fireEvent.click(screen.getByRole('tab', { name: 'В рецепты' }));
+    expect((recipesText as HTMLTextAreaElement).value).toContain('title,section');
   });
 });
 
@@ -837,10 +848,7 @@ describe('Сроки годности', () => {
 
     await waitFor(() => expect(api.addFridgeItem).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getAllByRole('link', { name: /Рецепты/ })[0]);
-
-    expect(await screen.findByText('Просрочено')).toBeTruthy();
-    expect(screen.getAllByText(/просрочено на 2 дн\./).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/просрочено на 2 дн\./)).toBeTruthy();
   });
 
   it('кнопка «Выбросить» убирает продукт из холодильника', async () => {
@@ -849,17 +857,15 @@ describe('Сроки годности', () => {
       { id: 'p2', name: 'яйца', amount: 10, unit: 'шт', updatedAt: null, expiresAt: null }
     ];
 
-    render(<App />);
-    await screen.findByText('Омлет с сыром');
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Выбросить «кефир»' }));
+    await openFridgePage();
+    fireEvent.click(within(fridgeRow('кефир')!).getByRole('button', { name: 'Выбросить' }));
+    const wasteDialog = await screen.findByRole('dialog', { name: 'Выбросить продукт' });
+    fireEvent.click(within(wasteDialog).getByRole('button', { name: 'Выбросить' }));
 
     await waitFor(() => expect(api.wasteProduct).toHaveBeenCalledWith('p1', 500));
     await waitFor(() => expect(screen.queryByText('кефир', { selector: 'span' })).toBeNull());
 
     // В холодильнике продукт тоже исчез.
-    fireEvent.click(screen.getAllByRole('link', { name: /Продукты/ })[0]);
-    await screen.findByRole('heading', { name: 'Мои продукты' });
     expect(fridgeRow('кефир')).toBeNull();
     expect(screen.getByText('яйца')).toBeTruthy();
   });

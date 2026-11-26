@@ -62,6 +62,9 @@ describe('экран сканирования чека', () => {
     if (!input) throw new Error('Не найден выбор файла');
     const file = new File(['image'], 'receipt.jpg', { type: 'image/jpeg' });
     fireEvent.change(input, { target: { files: [file] } });
+    expect(screen.getByText('receipt.jpg')).toBeTruthy();
+    expect(ocr.recognizeImage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Распознать' }));
     expect(await screen.findByDisplayValue('Молоко')).toBeTruthy();
     expect(ocr.recognizeImage).toHaveBeenCalledWith(file, expect.any(Function));
   });
