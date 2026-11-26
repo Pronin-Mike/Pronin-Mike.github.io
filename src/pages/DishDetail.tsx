@@ -221,29 +221,29 @@ export default function DishDetail() {
         </Card>
       ) : null}
 
-      <div className="sticky bottom-20 z-10 flex flex-wrap gap-2 rounded-2xl border border-cream-300 bg-white/95 p-3 shadow-lift backdrop-blur md:static md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+      <div className="sticky bottom-20 z-10 grid grid-cols-2 gap-2 rounded-2xl border border-cream-300 bg-white/95 p-3 shadow-lift backdrop-blur md:static md:flex md:flex-wrap md:border-0 md:bg-transparent md:p-0 md:shadow-none">
         <Button
           variant="olive"
           size="lg"
-          className="flex-1 md:flex-none"
+          className="h-full min-w-0 px-2 text-center leading-tight md:h-auto md:w-auto md:px-5"
           onClick={startCooking}
         >
           <Play className="size-4" />Начать готовить
         </Button>
 
-        <Button variant={availability.available ? 'olive' : 'ghost'} size="lg" className="flex-1 md:flex-none" disabled={!availability.available || busy} title={availability.available ? 'Потребуется подтверждение списания' : `Не хватает: ${availability.missingText}`} onClick={() => setQuickConfirmOpen(true)}>
+        <Button variant={availability.available ? 'olive' : 'ghost'} size="lg" className="h-full min-w-0 px-2 text-center leading-tight md:h-auto md:w-auto md:px-5" disabled={!availability.available || busy} title={availability.available ? 'Потребуется подтверждение списания' : `Не хватает: ${availability.missingText}`} onClick={() => setQuickConfirmOpen(true)}>
           Приготовить сразу
         </Button>
 
         <Link
           to={`/dish/${dish.id}/edit`}
-          className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-cream-300 bg-white px-4 font-semibold text-ink-soft transition hover:bg-cream-100 md:flex-none"
+          className="inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-[10px] border border-cream-300 bg-white px-2 text-center font-semibold leading-tight text-ink-soft transition hover:bg-cream-100 md:w-auto md:px-4"
         >
           <Pencil className="size-4" aria-hidden="true" />
           Редактировать
         </Link>
 
-        <Button variant="ghost" size="lg" className="flex-1 text-berry-500 md:flex-none" onClick={() => setDeleteConfirmOpen(true)}>
+        <Button variant="ghost" size="lg" className="h-full min-w-0 px-2 text-berry-500 md:h-auto md:w-auto md:px-5" onClick={() => setDeleteConfirmOpen(true)}>
           <Trash2 className="size-4" aria-hidden="true" />
           Удалить
         </Button>
