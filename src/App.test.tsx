@@ -300,7 +300,7 @@ describe('Recipes', () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть' }));
+    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть рецепт «Омлет с сыром»' }));
     const start = await screen.findByRole('button', { name: 'Начать готовить' });
     expect((start as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(start);
@@ -318,7 +318,7 @@ describe('Recipes', () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
-    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть' }));
+    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть рецепт «Омлет с сыром»' }));
     const quick = await screen.findByRole('button', { name: 'Приготовить сразу' });
     expect((quick as HTMLButtonElement).disabled).toBe(false);
     expect(api.cookDish).not.toHaveBeenCalled();
