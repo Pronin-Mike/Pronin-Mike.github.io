@@ -655,7 +655,7 @@ function normalizeCookResult(raw: unknown): CookResult {
         need: Number.isFinite(need) ? round3(need) : 0,
         have: Number.isFinite(have) ? round3(have) : 0,
         unit: toUnit(row.unit),
-        reason: have > 0 ? 'short' : 'absent'
+        reason: row.reason === 'expired' ? 'expired' : have > 0 ? 'short' : 'absent'
       };
     })
     .filter((item) => item.name.length > 0);
@@ -668,8 +668,8 @@ function normalizeCookResult(raw: unknown): CookResult {
   };
 }
 
-export async function cookDish(dishId: string): Promise<CookResult> {
-  const { data, error } = await supabase.rpc('cook_dish', { p_dish_id: dishId });
+export async function cookDish(dishId: string, operationId: string): Promise<CookResult> {
+  const { data, error } = await supabase.rpc('cook_dish', { p_dish_id: dishId, p_operation_id: operationId });
   if (error) raise('Не удалось приготовить блюдо', error);
   return normalizeCookResult(data);
 }

@@ -314,14 +314,18 @@ describe('Recipes', () => {
     expect(api.cookDish).not.toHaveBeenCalled();
   });
 
-  it('не активирует небезопасное быстрое списание до миграции', async () => {
+  it('быстрое приготовление списывает только после подтверждения с operation_id', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
 
     fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть' }));
     const quick = await screen.findByRole('button', { name: 'Приготовить сразу' });
-    expect((quick as HTMLButtonElement).disabled).toBe(true);
+    expect((quick as HTMLButtonElement).disabled).toBe(false);
     expect(api.cookDish).not.toHaveBeenCalled();
+    fireEvent.click(quick);
+    const dialog = await screen.findByRole('dialog', { name: 'Приготовить сразу?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Подтвердить списание' }));
+    await waitFor(() => expect(api.cookDish).toHaveBeenCalledWith('d-omlet', expect.any(String)));
   });
 });
 

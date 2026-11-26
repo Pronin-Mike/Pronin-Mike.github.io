@@ -1,4 +1,4 @@
--- PROPOSAL ONLY — DO NOT APPLY WITHOUT EXPLICIT APPROVAL.
+-- Applied to production Supabase after explicit approval on 2026-11-26.
 -- Safe, atomic and idempotent replacement contract for cooking.
 -- New signature: public.cook_dish(p_dish_id uuid, p_operation_id uuid).
 

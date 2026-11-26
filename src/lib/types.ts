@@ -433,7 +433,7 @@ export type Database = {
     };
     Functions: {
       cook_dish: {
-        Args: { p_dish_id: string };
+        Args: { p_dish_id: string; p_operation_id: string };
         Returns: unknown;
       };
       import_receipt: {

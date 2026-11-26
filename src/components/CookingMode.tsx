@@ -8,7 +8,7 @@ import { ingredientCost, dishCost, formatCost } from '../lib/pricing';
 import { getExpiryStatus } from '../lib/shelfLife';
 import type { CookingSession } from '../lib/cookingSession';
 import { clearCookingSession, saveCookingSession } from '../lib/cookingSession';
-import type { Dish, FridgeItem } from '../lib/types';
+import type { CookResult, Dish, FridgeItem } from '../lib/types';
 
 interface CookingModeProps {
   dish: Dish;
@@ -16,12 +16,17 @@ interface CookingModeProps {
   initialSession: CookingSession;
   onClose: () => void;
   onCancelled: () => void;
+  onCook: (dishId: string, operationId: string) => Promise<CookResult>;
+  onCompleted: () => void;
 }
 
-export default function CookingMode({ dish, fridgeIndex, initialSession, onClose, onCancelled }: CookingModeProps) {
+export default function CookingMode({ dish, fridgeIndex, initialSession, onClose, onCancelled, onCook, onCompleted }: CookingModeProps) {
   const [session, setSession] = useState(initialSession);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [cookError, setCookError] = useState<string | null>(null);
+  const [result, setResult] = useState<CookResult | null>(null);
   const cost = useMemo(() => dishCost(dish, fridgeIndex), [dish, fridgeIndex]);
 
   useEffect(() => {
@@ -45,6 +50,29 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
     const enough = Boolean(product && product.amount >= ingredient.amount && !expired);
     return { ingredient, index, product, expired, enough, cost: ingredientCost(ingredient, fridgeIndex) };
   });
+  const canWriteOff = ingredientRows.every((row) => row.enough);
+
+  const finish = async () => {
+    if (!canWriteOff || busy) return;
+    const operationId = session.operationId ?? crypto.randomUUID();
+    const withOperation = saveCookingSession({ ...session, operationId });
+    setSession(withOperation);
+    setBusy(true);
+    setCookError(null);
+    try {
+      const nextResult = await onCook(dish.id, operationId);
+      if (!nextResult.success) {
+        setCookError(nextResult.missing.length ? `Не хватает: ${nextResult.missing.map((item) => item.name).join(', ')}` : 'Сервер отклонил списание.');
+        return;
+      }
+      clearCookingSession();
+      setResult(nextResult);
+    } catch (caught) {
+      setCookError(caught instanceof Error ? caught.message : 'Не удалось подтвердить списание. Повтор использует тот же идентификатор операции.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[200] min-h-[100dvh] overflow-y-auto overscroll-contain bg-cream-100 text-ink" role="dialog" aria-modal="true" aria-label={`Готовим: ${dish.title}`}>
@@ -65,7 +93,11 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
           {[0, 1, 2].map((index) => <span key={index} className={cn('h-2 flex-1 rounded-full', index <= phaseIndex ? 'bg-terra-500' : 'bg-cream-300')} />)}
         </div>
 
-        {session.phase === 'prep' ? (
+        {result?.success ? (
+          <main className="mx-auto grid w-full max-w-[660px] flex-1 place-items-center text-center">
+            <Card className="w-full p-8"><span className="mx-auto grid size-14 place-items-center rounded-full bg-green-50 text-green-700"><Check className="size-7" /></span><h2 className="mt-4 font-display text-3xl font-extrabold">Готовка завершена</h2><p className="mt-2 text-ink-soft">Ингредиенты списаны одной серверной операцией.</p><p className="mt-3 font-bold">Стоимость: {result.costComplete ? `${(result.cost ?? 0).toFixed(2)} ₽` : `≈ ${(result.cost ?? 0).toFixed(2)} ₽, данные неполные`}</p><Button className="mt-6" size="lg" onClick={onCompleted}>Вернуться к рецепту</Button></Card>
+          </main>
+        ) : session.phase === 'prep' ? (
           <main className="mx-auto w-full max-w-[660px]">
             <h2 className="font-display text-2xl font-extrabold sm:text-3xl">Подготовка ингредиентов</h2>
             <p className="mt-2 text-sm text-ink-soft">Отметьте подготовленные продукты. Галочки не изменяют запасы.</p>
@@ -104,8 +136,9 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
             <p className="mt-2 text-sm text-ink-soft">До подтверждения продукты не списываются.</p>
             <Card className="mt-5 divide-y divide-cream-300 p-0">{ingredientRows.map(({ ingredient, cost: rowCost }) => <div key={`${ingredient.name}-${ingredient.unit}`} className="flex items-center justify-between gap-3 px-4 py-3"><span><strong className="block">{ingredient.name}</strong><small className="text-ink-muted">{formatCost(rowCost)}</small></span><strong>{ingredient.amount} {ingredient.unit}</strong></div>)}</Card>
             <div className="mt-4 rounded-xl bg-terra-50 p-4 text-sm text-terra-800"><strong>Примерная стоимость: {formatCost(cost)}</strong>{cost.status !== 'exact' ? <p className="mt-1">Стоимость известна не для всех ингредиентов; неизвестная часть не считается нулём.</p> : null}</div>
-            <div className="mt-4 rounded-xl bg-honey-50 p-4 text-sm text-honey-800">Безопасное серверное списание ожидает согласования миграции `cook_dish`. Прогресс сохранён, списание недоступно.</div>
-            <div className="mt-5 flex gap-2"><Button variant="ghost" size="lg" className="flex-1" onClick={() => update({ phase: dish.steps.length ? 'steps' : 'prep' })}><ChevronLeft className="size-5" />К шагам</Button><Button size="lg" className="flex-1" disabled title="Сначала требуется согласовать и применить безопасную миграцию cook_dish"><Check className="size-5" />Приготовлено — списать</Button></div>
+            {!canWriteOff ? <div className="mt-4 rounded-xl bg-honey-50 p-4 text-sm text-honey-800">Списание недоступно: сервер должен подтвердить достаточный непросроченный остаток всех ингредиентов.</div> : null}
+            {cookError ? <div role="alert" className="mt-4 rounded-xl bg-berry-50 p-4 text-sm text-berry-700">{cookError}</div> : null}
+            <div className="mt-5 flex gap-2"><Button variant="ghost" size="lg" className="flex-1" disabled={busy} onClick={() => update({ phase: dish.steps.length ? 'steps' : 'prep' })}><ChevronLeft className="size-5" />К шагам</Button><Button size="lg" className="flex-1" disabled={!canWriteOff || busy} onClick={() => void finish()}><Check className="size-5" />{busy ? 'Списываем…' : cookError ? 'Повторить списание' : 'Приготовлено — списать'}</Button></div>
           </main>
         ) : null}
       </div>

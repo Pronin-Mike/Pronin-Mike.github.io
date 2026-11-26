@@ -9,7 +9,7 @@ import { useToast } from '../components/Toast';
 import { Badge, Button, Card, SectionTitle } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import * as api from '../lib/api';
-import { checkDish, fridgeKey, normalizeName } from '../lib/availability';
+import { checkDish, fridgeKey, missingText, normalizeName } from '../lib/availability';
 import { formatTime, sectionEmoji } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
 import { dishCost, formatCost, ingredientCost } from '../lib/pricing';
@@ -22,12 +22,14 @@ import { clearCookingSession, createCookingSession, loadCookingSession, reconcil
 
 export default function DishDetail() {
   const { sectionId = '', dishId = '' } = useParams<{ sectionId: string; dishId: string }>();
-  const { sections, dishes, fridgeIndex, loading, error, reload } = useCookbook();
+  const { sections, dishes, fridgeIndex, loading, error, reload, cook } = useCookbook();
   const toast = useToast();
   const navigate = useNavigate();
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [sessionConflictOpen, setSessionConflictOpen] = useState(false);
+  const [quickConfirmOpen, setQuickConfirmOpen] = useState(false);
+  const [quickOperationId, setQuickOperationId] = useState<string | null>(null);
   const [cookingSession, setCookingSession] = useState<CookingSession | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,6 +55,27 @@ export default function DishDetail() {
       return;
     }
     setSessionConflictOpen(true);
+  };
+
+  const handleQuickCook = async () => {
+    if (!dish) return;
+    const operationId = quickOperationId ?? crypto.randomUUID();
+    setQuickOperationId(operationId);
+    setBusy(true);
+    try {
+      const result = await cook(dish.id, operationId);
+      if (!result.success) {
+        setQuickOperationId(null);
+        toast.show(`Не удалось списать: ${missingText(result.missing)}`, 'error');
+        return;
+      }
+      setQuickOperationId(null);
+      toast.show(`«${dish.title}» приготовлено. Списано на ${result.costComplete ? '' : '≈ '}${(result.cost ?? 0).toFixed(2)} ₽.`, 'success');
+    } catch (caught) {
+      toast.show(caught instanceof Error ? `${caught.message}. Повтор использует тот же идентификатор операции.` : 'Не удалось подтвердить списание', 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -208,7 +231,7 @@ export default function DishDetail() {
           <Play className="size-4" />Начать готовить
         </Button>
 
-        <Button variant="ghost" size="lg" className="flex-1 md:flex-none" disabled title="Ожидает согласования безопасной миграции cook_dish">
+        <Button variant={availability.available ? 'olive' : 'ghost'} size="lg" className="flex-1 md:flex-none" disabled={!availability.available || busy} title={availability.available ? 'Потребуется подтверждение списания' : `Не хватает: ${availability.missingText}`} onClick={() => setQuickConfirmOpen(true)}>
           Приготовить сразу
         </Button>
 
@@ -242,6 +265,18 @@ export default function DishDetail() {
       />
 
       <ConfirmDialog
+        open={quickConfirmOpen}
+        title="Приготовить сразу?"
+        description={`Все ингредиенты для «${dish.title}» будут атомарно списаны из холодильника. Повторный сетевой запрос защищён идентификатором операции.`}
+        busy={busy}
+        actions={[{ label: 'Подтвердить списание', value: 'cook', variant: 'primary' }, { label: 'Отмена', value: 'cancel', variant: 'ghost' }]}
+        onResolve={(value) => {
+          setQuickConfirmOpen(false);
+          if (value === 'cook') void handleQuickCook();
+        }}
+      />
+
+      <ConfirmDialog
         open={sessionConflictOpen}
         title="Уже идёт другая готовка"
         description={`Сохранена незавершённая готовка «${loadCookingSession()?.dishTitle ?? 'другого рецепта'}».`}
@@ -262,7 +297,7 @@ export default function DishDetail() {
         }}
       />
 
-      {cookingSession ? <CookingMode dish={dish} fridgeIndex={fridgeIndex} initialSession={cookingSession} onClose={() => setCookingSession(null)} onCancelled={() => { setCookingSession(null); toast.show('Готовка отменена. Запасы не изменены.', 'info'); }} /> : null}
+      {cookingSession ? <CookingMode dish={dish} fridgeIndex={fridgeIndex} initialSession={cookingSession} onCook={cook} onClose={() => setCookingSession(null)} onCompleted={() => { setCookingSession(null); toast.show('Готовка завершена, продукты списаны.', 'success'); }} onCancelled={() => { setCookingSession(null); toast.show('Готовка отменена. Запасы не изменены.', 'info'); }} /> : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from '../lib/api';
-import { fridgeKey, indexFridge } from '../lib/availability';
+import { indexFridge } from '../lib/availability';
 import { getExpiryStatus } from '../lib/shelfLife';
 import type { CookResult, Dish, FridgeItem, Section } from '../lib/types';
 
@@ -23,7 +23,7 @@ export interface CookbookData {
   reload: () => Promise<void>;
   reloadFridge: () => Promise<void>;
   /** Вызывает RPC cook_dish и обновляет холодильник; ошибки бросает наружу. */
-  cook: (dishId: string) => Promise<CookResult>;
+  cook: (dishId: string, operationId: string) => Promise<CookResult>;
 }
 
 function toMessage(error: unknown, fallback: string): string {
@@ -79,28 +79,12 @@ export function useCookbook(): CookbookData {
   const fridgeIndexed = useMemo(() => indexFridge(fridge), [fridge]);
 
   const cook = useCallback(
-    async (dishId: string) => {
-      // Просроченные ингредиенты блюда ищем до списания: после него их уже нет.
-      const dish = dishes.find((item) => item.id === dishId);
-      const expiredWarning: string[] = [];
-
-      if (dish) {
-        const seen = new Set<string>();
-        for (const ingredient of dish.ingredients) {
-          const product = fridgeIndexed.get(fridgeKey(ingredient.name, ingredient.unit));
-          if (!product || getExpiryStatus(product.expiresAt) !== 'expired') continue;
-          if (seen.has(product.name)) continue;
-          seen.add(product.name);
-          expiredWarning.push(product.name);
-        }
-      }
-
-      const result = await api.cookDish(dishId);
+    async (dishId: string, operationId: string) => {
+      const result = await api.cookDish(dishId, operationId);
       if (result.success) await reloadFridge();
-
-      return expiredWarning.length ? { ...result, expiredWarning } : result;
+      return result;
     },
-    [dishes, fridgeIndexed, reloadFridge]
+    [reloadFridge]
   );
 
   const expiring = useMemo(
