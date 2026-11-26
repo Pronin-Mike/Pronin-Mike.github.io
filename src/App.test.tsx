@@ -832,6 +832,24 @@ describe('Продукты v2.1', () => {
     expect((within(dialog).getByLabelText('Количество') as HTMLInputElement).value).toBe('2');
   });
 
+  it('понятно объясняет варианты при добавлении существующего продукта', async () => {
+    fridge = [{ id: 'bread', name: 'Хлеб', amount: 80, unit: 'г', updatedAt: null, expiresAt: '2027-12-01' }];
+    await openFridgePage();
+    const submit = fillFridgeForm('Хлеб', '10');
+    fireEvent.click(submit);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Продукт уже есть в холодильнике' });
+    expect(within(dialog).getByText('Сейчас:', { exact: false }).textContent).toContain('80 г');
+    expect(within(dialog).getByText('Сейчас:', { exact: false }).textContent).toContain('01.12.2027');
+    expect(within(dialog).getByText('Добавляется:', { exact: false }).textContent).toContain('10 г');
+    expect(within(dialog).getByText(/Получится 90 г/)).toBeTruthy();
+    expect(within(dialog).getByText(/сохранится более ранний указанный срок/)).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Сложить остатки' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Заменить остаток' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Не добавлять' })).toBeTruthy();
+    expect(api.applyFridgePurchase).not.toHaveBeenCalled();
+  });
+
   it('на телефоне открывает добавление в общем Modal', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,

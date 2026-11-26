@@ -72,6 +72,12 @@ function itemCost(item: FridgeItem) {
   };
 }
 
+function formatProductDate(value: string | null | undefined): string {
+  if (!value) return 'срок не указан';
+  const [year, month, day] = value.split('-');
+  return year && month && day ? `${day}.${month}.${year}` : value;
+}
+
 export default function Fridge() {
   const { fridge, loading, error, reload, reloadFridge } = useCookbook();
   const toast = useToast();
@@ -655,15 +661,36 @@ export default function Fridge() {
 
       <ConfirmDialog
         open={Boolean(duplicate)}
-        title="Такой продукт уже есть"
+        title="Продукт уже есть в холодильнике"
         description={duplicate
-          ? `«${duplicate.existing.name}» — ${formatAmount(duplicate.existing.amount)} ${duplicate.existing.unit}. Новое значение: ${formatAmount(duplicate.input.amount)} ${duplicate.input.unit}. При сложении останется более ранний срок годности.`
+          ? (
+            <div className="grid gap-3 text-[15px] leading-relaxed">
+              <p className="text-ink-soft">Найдена позиция с таким же названием и единицей измерения.</p>
+              <div className="rounded-xl border border-cream-300 bg-cream-100 p-3">
+                <strong className="block text-base text-ink">{duplicate.existing.name}</strong>
+                <span className="mt-1 block text-ink-soft">
+                  Сейчас: <b className="text-ink">{formatAmount(duplicate.existing.amount)} {duplicate.existing.unit}</b>
+                  {' · '}{formatProductDate(duplicate.existing.expiresAt)}
+                </span>
+                <span className="mt-1 block text-ink-soft">
+                  Добавляется: <b className="text-ink">{formatAmount(duplicate.input.amount)} {duplicate.input.unit}</b>
+                  {' · '}{formatProductDate(duplicate.input.expiresAt)}
+                </span>
+              </div>
+              <p className="font-semibold text-ink">
+                Сложить остатки? Получится {formatAmount(duplicate.existing.amount + duplicate.input.amount)} {duplicate.existing.unit}.
+              </p>
+              <p className="rounded-xl bg-honey-50 p-3 text-sm text-honey-800">
+                При сложении сохранится более ранний указанный срок годности.
+              </p>
+            </div>
+          )
           : ''}
         busy={busy}
         actions={[
-          { label: 'Заменить', value: 'replace', variant: 'primary' },
-          { label: 'Сложить', value: 'add', variant: 'olive' },
-          { label: 'Отмена', value: 'cancel', variant: 'ghost' }
+          { label: 'Сложить остатки', value: 'add', variant: 'olive' },
+          { label: 'Заменить остаток', value: 'replace', variant: 'primary' },
+          { label: 'Не добавлять', value: 'cancel', variant: 'ghost' }
         ]}
         onResolve={(value) => void resolveDuplicate(value)}
       />
