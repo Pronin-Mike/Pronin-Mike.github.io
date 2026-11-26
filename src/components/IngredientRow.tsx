@@ -96,7 +96,7 @@ export function IngredientViewRow({ ingredient, missing, expiresAt = null, cost 
   return (
     <li
       className={cn(
-        'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-[15px]',
+        'grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5 text-[15px]',
         ok ? 'border-cream-300 bg-white' : 'border-honey-100 bg-honey-50'
       )}
     >
@@ -106,23 +106,25 @@ export function IngredientViewRow({ ingredient, missing, expiresAt = null, cost 
       >
         {ok ? '✓' : '✕'}
       </span>
-      <span className="flex-1 break-words">{ingredient.name}</span>
+      <span className="min-w-0 break-words">{ingredient.name}</span>
       <span className="shrink-0 font-semibold tabular-nums text-ink-soft">
         {formatAmount(ingredient.amount)} {ingredient.unit}
       </span>
-      {cost ? <span className="shrink-0 text-xs font-semibold tabular-nums text-terra-700">{formatCost(cost)}</span> : null}
-      {missing ? (
-        <span className="w-full text-xs text-honey-700 md:w-auto md:shrink-0">
-          {missing.reason === 'absent'
-            ? 'нет в холодильнике'
-            : missing.reason === 'unit'
-              ? `нужен ${missing.unit}`
-              : missing.reason === 'expired'
-                ? 'продукт просрочен'
-                : `есть ${formatAmount(missing.have)} ${missing.unit}`}
-        </span>
-      ) : null}
-      <ShelfLifeBadge expiresAt={expiresAt} className="w-full md:w-auto" />
+      <span className="col-span-2 col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        {cost ? <span className="text-xs font-semibold tabular-nums text-terra-700">{formatCost(cost)}</span> : null}
+        {missing ? (
+          <span className="min-w-0 text-xs text-honey-700">
+            {missing.reason === 'absent'
+              ? 'нет в холодильнике'
+              : missing.reason === 'unit'
+                ? `нужен ${missing.unit}`
+                : missing.reason === 'expired'
+                  ? 'продукт просрочен'
+                  : `есть ${formatAmount(missing.have)} ${missing.unit}`}
+          </span>
+        ) : null}
+        <ShelfLifeBadge expiresAt={expiresAt} className="min-w-0 max-w-full whitespace-normal" />
+      </span>
     </li>
   );
 }
