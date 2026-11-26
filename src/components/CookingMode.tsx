@@ -22,7 +22,6 @@ interface CookingModeProps {
 
 export default function CookingMode({ dish, fridgeIndex, initialSession, onClose, onCancelled, onCook, onCompleted }: CookingModeProps) {
   const [session, setSession] = useState(initialSession);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cookError, setCookError] = useState<string | null>(null);
@@ -40,7 +39,10 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
   }, [session.phase, session.currentStep, session.preparedIngredients]);
 
   const update = (next: Partial<CookingSession>) => setSession((current) => ({ ...current, ...next }));
-  const close = () => { saveCookingSession(session); onClose(); };
+  const minimize = () => {
+    if (!result?.success) saveCookingSession(session);
+    onClose();
+  };
   const cancel = () => { clearCookingSession(); setCancelOpen(false); onCancelled(); };
   const phaseIndex = session.phase === 'prep' ? 0 : session.phase === 'steps' ? 1 : 2;
 
@@ -83,10 +85,9 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
             <p className="mt-1 text-sm text-ink-muted">Режим готовки{dish.timeMin ? ` · ${dish.timeMin} минут` : ''}</p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <IconButton label="Дополнительные действия" onClick={() => setMenuOpen((open) => !open)}><MoreHorizontal className="size-5" /></IconButton>
-            <IconButton label="Закрыть и сохранить" onClick={close}><X className="size-5" /></IconButton>
+            <IconButton label="Свернуть и сохранить" onClick={minimize}><MoreHorizontal className="size-5" /></IconButton>
+            <IconButton label={result?.success ? 'Закрыть' : 'Отменить готовку'} onClick={() => result?.success ? onCompleted() : setCancelOpen(true)}><X className="size-5" /></IconButton>
           </div>
-          {menuOpen ? <div className="absolute right-12 top-12 z-10 rounded-xl border border-cream-300 bg-white p-2 shadow-lift"><Button variant="danger" size="sm" onClick={() => { setMenuOpen(false); setCancelOpen(true); }}>Отменить готовку</Button></div> : null}
         </header>
 
         <div className="my-4 flex gap-1.5" aria-label={`Этап ${phaseIndex + 1} из 3`}>

@@ -314,6 +314,28 @@ describe('Recipes', () => {
     expect(api.cookDish).not.toHaveBeenCalled();
   });
 
+  it('сворачивает готовку через троеточие, а крестик отменяет её после подтверждения', async () => {
+    render(<App />);
+    await screen.findByText('Омлет с сыром');
+
+    fireEvent.click(within(cardByTitle('Омлет с сыром')).getByRole('link', { name: 'Открыть рецепт «Омлет с сыром»' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать готовить' }));
+    expect(await screen.findByRole('dialog', { name: 'Готовим: Омлет с сыром' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть и сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Готовим: Омлет с сыром' })).toBeNull());
+    expect(localStorage.getItem('fridge-cooking-v2')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Начать готовить' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Отменить готовку' }));
+    const cancelDialog = await screen.findByRole('dialog', { name: 'Отменить готовку?' });
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Отменить готовку' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Готовим: Омлет с сыром' })).toBeNull());
+    expect(localStorage.getItem('fridge-cooking-v2')).toBeNull();
+    expect(api.cookDish).not.toHaveBeenCalled();
+  });
+
   it('быстрое приготовление списывает только после подтверждения с operation_id', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
