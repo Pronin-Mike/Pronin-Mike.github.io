@@ -5,7 +5,7 @@
  * показать продукты, которые уже есть в холодильнике.
  *
  * Правила:
- *   • ищем по НАЧАЛУ названия («о» → огурцы, орехи; «ог» → только огурцы);
+ *   • короткий ввод ищем с начала, а от трёх символов — по любой части названия;
  *   • регистр и лишние пробелы не важны;
  *   • пустой ввод — подсказок нет, список закрыт;
  *   • если совпадений нет, список тоже закрыт, а поле остаётся обычным:
@@ -20,6 +20,7 @@ import type { FridgeItem, Unit } from './types';
 export interface IngredientSuggestion {
   name: string;
   unit: Unit;
+  amount: number;
 }
 
 /** Сколько подсказок показываем максимум. */
@@ -31,25 +32,24 @@ export const SUGGESTION_LIMIT = 8;
  * это честно, ведь совпадение единицы обязательно.
  */
 export function buildIngredientSuggestions(fridge: FridgeItem[]): IngredientSuggestion[] {
-  const seen = new Set<string>();
-  const suggestions: IngredientSuggestion[] = [];
+  const byProduct = new Map<string, IngredientSuggestion>();
 
   for (const item of fridge) {
     const name = item.name.trim();
     if (!name) continue;
 
     const key = `${normalizeName(name)}|${item.unit}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    suggestions.push({ name, unit: item.unit });
+    const existing = byProduct.get(key);
+    if (existing) existing.amount += item.amount;
+    else byProduct.set(key, { name, unit: item.unit, amount: item.amount });
   }
 
-  return suggestions.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  return [...byProduct.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 }
 
 /**
- * Фильтрует подсказки по введённому тексту (совпадение с начала названия).
+ * Фильтрует подсказки по введённому тексту. Совпадения с начала названия
+ * идут перед совпадениями в середине («хле» найдёт и «Бородинский хлеб»).
  * @param query то, что пользователь уже напечатал
  * @param limit максимум подсказок
  */
@@ -61,8 +61,18 @@ export function filterIngredientSuggestions(
   const needle = normalizeName(query);
   if (!needle) return [];
 
+  const allowMiddleMatch = needle.length >= 3;
+
   return suggestions
-    .filter((item) => normalizeName(item.name).startsWith(needle))
+    .filter((item) => {
+      const name = normalizeName(item.name);
+      return name.startsWith(needle) || (allowMiddleMatch && name.includes(needle));
+    })
+    .sort((a, b) => {
+      const aPrefix = normalizeName(a.name).startsWith(needle) ? 0 : 1;
+      const bPrefix = normalizeName(b.name).startsWith(needle) ? 0 : 1;
+      return aPrefix - bPrefix || a.name.localeCompare(b.name, 'ru');
+    })
     .slice(0, Math.max(0, limit));
 }
 

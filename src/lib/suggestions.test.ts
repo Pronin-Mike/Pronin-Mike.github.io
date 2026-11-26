@@ -20,10 +20,10 @@ const fridge: FridgeItem[] = [
 describe('buildIngredientSuggestions', () => {
   it('собирает продукты и сортирует по названию', () => {
     expect(buildIngredientSuggestions(fridge)).toEqual([
-      { name: 'молоко', unit: 'мл' },
-      { name: 'огурцы', unit: 'г' },
-      { name: 'орехи', unit: 'г' },
-      { name: 'хлеб', unit: 'г' }
+      { name: 'молоко', unit: 'мл', amount: 1000 },
+      { name: 'огурцы', unit: 'г', amount: 300 },
+      { name: 'орехи', unit: 'г', amount: 100 },
+      { name: 'хлеб', unit: 'г', amount: 500 }
     ]);
   });
 
@@ -33,8 +33,8 @@ describe('buildIngredientSuggestions', () => {
       { id: 'b', name: 'Масло', amount: 100, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
     expect(result).toEqual([
-      { name: 'масло', unit: 'мл' },
-      { name: 'Масло', unit: 'г' }
+      { name: 'масло', unit: 'мл', amount: 200 },
+      { name: 'Масло', unit: 'г', amount: 100 }
     ]);
   });
 
@@ -44,7 +44,7 @@ describe('buildIngredientSuggestions', () => {
       { id: 'b', name: ' Соль ', amount: 200, unit: 'г', updatedAt: null, expiresAt: null },
       { id: 'c', name: '   ', amount: 1, unit: 'г', updatedAt: null, expiresAt: null }
     ]);
-    expect(result).toEqual([{ name: 'соль', unit: 'г' }]);
+    expect(result).toEqual([{ name: 'соль', unit: 'г', amount: 300 }]);
   });
 
   it('на пустом холодильнике подсказок нет', () => {
@@ -57,17 +57,30 @@ describe('filterIngredientSuggestions', () => {
 
   it('ищет по началу названия: «о» → огурцы и орехи, но не молоко', () => {
     expect(filterIngredientSuggestions(suggestions, 'о')).toEqual([
-      { name: 'огурцы', unit: 'г' },
-      { name: 'орехи', unit: 'г' }
+      { name: 'огурцы', unit: 'г', amount: 300 },
+      { name: 'орехи', unit: 'г', amount: 100 }
     ]);
   });
 
   it('уточнение сужает список: «ог» → только огурцы', () => {
-    expect(filterIngredientSuggestions(suggestions, 'ог')).toEqual([{ name: 'огурцы', unit: 'г' }]);
+    expect(filterIngredientSuggestions(suggestions, 'ог')).toEqual([{ name: 'огурцы', unit: 'г', amount: 300 }]);
   });
 
   it('регистр и лишние пробелы не важны', () => {
-    expect(filterIngredientSuggestions(suggestions, '  ХЛЕ ')).toEqual([{ name: 'хлеб', unit: 'г' }]);
+    expect(filterIngredientSuggestions(suggestions, '  ХЛЕ ')).toEqual([{ name: 'хлеб', unit: 'г', amount: 500 }]);
+  });
+
+  it('находит совпадение в середине названия после совпадений с начала', () => {
+    const result = buildIngredientSuggestions([
+      { id: 'a', name: 'Бородинский хлеб', amount: 250, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'b', name: 'Хлебный кулич', amount: 400, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'c', name: 'Хлеб', amount: 500, unit: 'г', updatedAt: null, expiresAt: null }
+    ]);
+    expect(filterIngredientSuggestions(result, 'хле').map((item) => item.name)).toEqual([
+      'Хлеб',
+      'Хлебный кулич',
+      'Бородинский хлеб'
+    ]);
   });
 
   it('незнакомое начало даёт пустой список', () => {

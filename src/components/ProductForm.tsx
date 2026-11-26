@@ -1,6 +1,8 @@
 import { useState, type FormEvent, type Ref } from 'react';
 import type { Unit } from '../lib/types';
 import { Field, Input, Select } from './ui';
+import IngredientNameInput from './IngredientNameInput';
+import type { IngredientSuggestion } from '../lib/suggestions';
 
 export interface ProductFormState {
   name: string;
@@ -17,8 +19,10 @@ export interface ProductFormProps {
   busy?: boolean;
   nameInputRef?: Ref<HTMLInputElement>;
   dateInputRef?: Ref<HTMLInputElement>;
+  suggestions?: IngredientSuggestion[];
   onChange: (next: ProductFormState) => void;
   onNameChange: (name: string) => void;
+  onSuggestionPick?: (suggestion: IngredientSuggestion) => void;
   onDateChange: (date: string) => void;
   onQuickDate: (days: number) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -30,8 +34,10 @@ export default function ProductForm({
   mode,
   nameInputRef,
   dateInputRef,
+  suggestions = [],
   onChange,
   onNameChange,
+  onSuggestionPick,
   onDateChange,
   onSubmit
 }: ProductFormProps) {
@@ -46,13 +52,15 @@ export default function ProductForm({
     >
       <div className="min-w-0 sm:col-span-2">
         <Field label="Название продукта" htmlFor={`${id}-name`}>
-          <Input
+          <IngredientNameInput
             id={`${id}-name`}
-            ref={nameInputRef}
+            inputRef={nameInputRef}
             value={value.name}
             placeholder="Например, молоко"
-            autoComplete="off"
-            onChange={(event) => onNameChange(event.target.value)}
+            ariaLabel="Название продукта"
+            suggestions={suggestions}
+            onChange={onNameChange}
+            onPick={(suggestion) => onSuggestionPick ? onSuggestionPick(suggestion) : onChange({ ...value, name: suggestion.name, unit: suggestion.unit })}
           />
         </Field>
       </div>

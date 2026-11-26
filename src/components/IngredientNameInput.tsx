@@ -1,5 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { Input, cn } from './ui';
+import { formatAmount } from '../lib/format';
 import {
   filterIngredientSuggestions,
   shouldShowSuggestions,
@@ -21,6 +22,8 @@ export interface IngredientNameInputProps {
   disabled?: boolean;
   placeholder?: string;
   ariaLabel: string;
+  id?: string;
+  inputRef?: Ref<HTMLInputElement>;
   onChange: (value: string) => void;
   /** Выбор подсказки: имя и единица измерения из холодильника. */
   onPick?: (suggestion: IngredientSuggestion) => void;
@@ -32,6 +35,8 @@ export default function IngredientNameInput({
   disabled = false,
   placeholder,
   ariaLabel,
+  id,
+  inputRef,
   onChange,
   onPick
 }: IngredientNameInputProps) {
@@ -107,6 +112,8 @@ export default function IngredientNameInput({
   return (
     <div className="relative" ref={wrapperRef}>
       <Input
+        id={id}
+        ref={inputRef}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
@@ -147,8 +154,8 @@ export default function IngredientNameInput({
               onClick={() => pick(item)}
             >
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
-              <span className="shrink-0 rounded-full bg-cream-100 px-2 py-0.5 text-xs font-semibold text-ink-soft">
-                {item.unit}
+              <span className="shrink-0 rounded-full bg-cream-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-soft">
+                {formatAmount(item.amount)} {item.unit}
               </span>
             </li>
           ))}

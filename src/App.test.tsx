@@ -786,6 +786,32 @@ describe('Продукты v2.1', () => {
     expect(screen.queryByRole('dialog', { name: 'Добавить продукт' })).toBeNull();
   });
 
+  it('показывает при добавлении подходящие продукты с остатком и единицей', async () => {
+    fridge.push(
+      { id: 'p7', name: 'Бородинский хлеб', amount: 250, unit: 'г', updatedAt: null, expiresAt: null },
+      { id: 'p8', name: 'Хлебный кулич', amount: 2, unit: 'шт', updatedAt: null, expiresAt: null }
+    );
+    await openFridgePage();
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить продукт' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Добавить продукт' });
+    const name = within(dialog).getByLabelText('Название продукта');
+    fireEvent.change(name, { target: { value: 'Хле' } });
+
+    const options = within(within(dialog).getByRole('listbox', { name: 'Продукты из холодильника' })).getAllByRole('option');
+    expect(options).toHaveLength(3);
+    expect(within(options[0]).getByText('хлеб')).toBeTruthy();
+    expect(within(options[0]).getByText('500 г')).toBeTruthy();
+    expect(within(options[1]).getByText('Хлебный кулич')).toBeTruthy();
+    expect(within(options[1]).getByText('2 шт')).toBeTruthy();
+    expect(within(options[2]).getByText('Бородинский хлеб')).toBeTruthy();
+    expect(within(options[2]).getByText('250 г')).toBeTruthy();
+
+    fireEvent.click(options[1]);
+    expect((name as HTMLInputElement).value).toBe('Хлебный кулич');
+    expect((within(dialog).getByLabelText('Единица') as HTMLSelectElement).value).toBe('шт');
+    expect(api.addFridgeItem).not.toHaveBeenCalled();
+  });
+
   it('переход с главной по add=1 автоматически открывает добавление', async () => {
     window.history.replaceState(null, '', '#/fridge?add=1');
     render(<App />);

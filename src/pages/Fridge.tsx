@@ -24,6 +24,7 @@ import { normalizeName, round3 } from '../lib/availability';
 import { formatAmount, productWord } from '../lib/format';
 import { formatCost, formatMoney, formatStockUnitCost } from '../lib/pricing';
 import { planFridgeNameNormalization } from '../lib/receiptMatcher';
+import { buildIngredientSuggestions } from '../lib/suggestions';
 import { ETERNAL_PRODUCTS, defaultExpiresAt, getExpiryStatus, type ExpiryStatus } from '../lib/shelfLife';
 import type { FridgeInput, FridgeItem } from '../lib/types';
 import { validateFridgeInput } from '../lib/validation';
@@ -128,6 +129,7 @@ export default function Fridge() {
   }, [searchParams, setSearchParams]);
 
   const normalizationGroups = useMemo(() => planFridgeNameNormalization(fridge), [fridge]);
+  const productSuggestions = useMemo(() => buildIngredientSuggestions(fridge), [fridge]);
   const normalizationRows = normalizationGroups.reduce((total, group) => total + group.ids.length, 0);
   const visible = useMemo(() => {
     const needle = normalizeName(search);
@@ -508,8 +510,10 @@ export default function Fridge() {
           mode="create"
           busy={busy}
           nameInputRef={addNameRef}
+          suggestions={productSuggestions}
           onChange={setAddForm}
           onNameChange={(name) => suggestName(addForm, setAddForm, addDateTouched, name)}
+          onSuggestionPick={(suggestion) => suggestName({ ...addForm, unit: suggestion.unit }, setAddForm, addDateTouched, suggestion.name)}
           onDateChange={(date) => setDate(addForm, setAddForm, addDateTouched, date)}
           onQuickDate={(days) => quickDate(addForm, setAddForm, addDateTouched, days)}
           onSubmit={(event) => submitForm('create', event)}
