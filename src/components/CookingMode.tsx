@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, ChevronRight, MoreHorizontal, X } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 import { Button, Card, IconButton, cn } from './ui';
-import { fridgeKey, normalizeName } from '../lib/availability';
+import { checkDish, fridgeKey, normalizeName } from '../lib/availability';
 import { ingredientCost, dishCost, formatCost } from '../lib/pricing';
+import { formatAmount } from '../lib/format';
 import { getExpiryStatus } from '../lib/shelfLife';
 import type { CookingSession } from '../lib/cookingSession';
 import { clearCookingSession, saveCookingSession } from '../lib/cookingSession';
@@ -27,6 +28,7 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
   const [cookError, setCookError] = useState<string | null>(null);
   const [result, setResult] = useState<CookResult | null>(null);
   const cost = useMemo(() => dishCost(dish, fridgeIndex), [dish, fridgeIndex]);
+  const availability = useMemo(() => checkDish(dish, fridgeIndex), [dish, fridgeIndex]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -48,11 +50,11 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
 
   const ingredientRows = dish.ingredients.map((ingredient, index) => {
     const product = fridgeIndex.get(fridgeKey(ingredient.name, ingredient.unit));
-    const expired = product ? getExpiryStatus(product.expiresAt) === 'expired' : false;
-    const enough = Boolean(product && product.amount >= ingredient.amount && !expired);
-    return { ingredient, index, product, expired, enough, cost: ingredientCost(ingredient, fridgeIndex) };
+    const missing = availability.missing.find((item) => normalizeName(item.name) === normalizeName(ingredient.name) && item.unit === ingredient.unit);
+    const expired = missing?.reason === 'expired' || (product ? getExpiryStatus(product.expiresAt) === 'expired' : false);
+    return { ingredient, index, product, expired, enough: !missing, missing, cost: ingredientCost(ingredient, fridgeIndex) };
   });
-  const canWriteOff = ingredientRows.every((row) => row.enough);
+  const canWriteOff = availability.available;
 
   const finish = async () => {
     if (!canWriteOff || busy) return;
@@ -103,10 +105,10 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
             <h2 className="font-display text-2xl font-extrabold sm:text-3xl">Подготовка ингредиентов</h2>
             <p className="mt-2 text-sm text-ink-soft">Отметьте подготовленные продукты. Галочки не изменяют запасы.</p>
             <Card className="mt-5 divide-y divide-cream-300 p-0">
-              {ingredientRows.map(({ ingredient, index, expired, enough, product }) => (
+              {ingredientRows.map(({ ingredient, index, expired, enough, missing }) => (
                 <label key={`${normalizeName(ingredient.name)}-${ingredient.unit}-${index}`} className="flex cursor-pointer items-center gap-3 px-4 py-3">
                   <input type="checkbox" className="size-5 accent-terra-500" checked={session.preparedIngredients.includes(index)} onChange={() => update({ preparedIngredients: session.preparedIngredients.includes(index) ? session.preparedIngredients.filter((item) => item !== index) : [...session.preparedIngredients, index] })} />
-                  <span className="min-w-0 flex-1"><strong className="block truncate">{ingredient.name}</strong><small className={expired ? 'text-berry-700' : enough ? 'text-green-700' : 'text-honey-700'}>{expired ? 'Просрочен — нельзя списать' : enough ? 'Есть в холодильнике' : `Не хватает: есть ${product?.amount ?? 0} ${ingredient.unit}`}</small></span>
+                  <span className="min-w-0 flex-1"><strong className="block truncate">{ingredient.name}</strong><small className={expired ? 'text-berry-700' : enough ? 'text-green-700' : 'text-honey-700'}>{missing ? missingReason(missing) : 'Есть в холодильнике'}</small></span>
                   <strong className="shrink-0 text-sm">{ingredient.amount} {ingredient.unit}</strong>
                 </label>
               ))}
@@ -131,13 +133,13 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
           </main>
         ) : null}
 
-        {session.phase === 'confirm' ? (
+        {!result?.success && session.phase === 'confirm' ? (
           <main className="mx-auto w-full max-w-[660px]">
             <h2 className="font-display text-2xl font-extrabold sm:text-3xl">Подтвердите приготовление</h2>
             <p className="mt-2 text-sm text-ink-soft">До подтверждения продукты не списываются.</p>
             <Card className="mt-5 divide-y divide-cream-300 p-0">{ingredientRows.map(({ ingredient, cost: rowCost }) => <div key={`${ingredient.name}-${ingredient.unit}`} className="flex items-center justify-between gap-3 px-4 py-3"><span><strong className="block">{ingredient.name}</strong><small className="text-ink-muted">{formatCost(rowCost)}</small></span><strong>{ingredient.amount} {ingredient.unit}</strong></div>)}</Card>
             <div className="mt-4 rounded-xl bg-terra-50 p-4 text-sm text-terra-800"><strong>Примерная стоимость: {formatCost(cost)}</strong>{cost.status !== 'exact' ? <p className="mt-1">Стоимость известна не для всех ингредиентов; неизвестная часть не считается нулём.</p> : null}</div>
-            {!canWriteOff ? <div className="mt-4 rounded-xl bg-honey-50 p-4 text-sm text-honey-800">Списание недоступно: сервер должен подтвердить достаточный непросроченный остаток всех ингредиентов.</div> : null}
+            {!canWriteOff ? <div role="alert" className="mt-4 rounded-xl bg-honey-50 p-4 text-sm text-honey-800"><strong className="block text-base">Не получится списать все ингредиенты</strong><p className="mt-1">Исправьте остатки в холодильнике или вернитесь к рецепту:</p><ul className="mt-2 list-disc space-y-1 pl-5">{availability.missing.map((item) => <li key={`${item.name}-${item.unit}`}>{item.name}: {missingReason(item)}</li>)}</ul></div> : null}
             {cookError ? <div role="alert" className="mt-4 rounded-xl bg-berry-50 p-4 text-sm text-berry-700">{cookError}</div> : null}
             <div className="mt-5 flex gap-2"><Button variant="ghost" size="lg" className="flex-1" disabled={busy} onClick={() => update({ phase: dish.steps.length ? 'steps' : 'prep' })}><ChevronLeft className="size-5" />К шагам</Button><Button size="lg" className="flex-1" disabled={!canWriteOff || busy} onClick={() => void finish()}><Check className="size-5" />{busy ? 'Списываем…' : cookError ? 'Повторить списание' : 'Приготовлено — списать'}</Button></div>
           </main>
@@ -148,6 +150,13 @@ export default function CookingMode({ dish, fridgeIndex, initialSession, onClose
     </div>,
     document.body
   );
+}
+
+function missingReason(item: CookResult['missing'][number]): string {
+  if (item.reason === 'expired') return `продукт просрочен, требуется ${formatAmount(item.need)} ${item.unit}`;
+  if (item.reason === 'unit') return `есть в другой единице, требуется ${formatAmount(item.need)} ${item.unit}`;
+  if (item.reason === 'short') return `недостаточно: есть ${formatAmount(item.have)} ${item.unit}, требуется ${formatAmount(item.need)} ${item.unit}`;
+  return `нет в холодильнике, требуется ${formatAmount(item.need)} ${item.unit}`;
 }
 
 function IngredientList({ rows }: { rows: Array<{ ingredient: Dish['ingredients'][number]; enough: boolean; expired: boolean }> }) {

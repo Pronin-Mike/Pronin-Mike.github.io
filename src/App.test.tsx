@@ -336,6 +336,21 @@ describe('Recipes', () => {
     expect(api.cookDish).not.toHaveBeenCalled();
   });
 
+  it('на финальном экране объясняет, какой ингредиент нельзя списать и почему', async () => {
+    render(<App />);
+    await screen.findByText('Борщ');
+
+    fireEvent.click(within(cardByTitle('Борщ')).getByRole('link', { name: 'Открыть рецепт «Борщ»' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать готовить' }));
+    expect(await screen.findByRole('dialog', { name: 'Готовим: Борщ' })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Начать готовить' })[1]);
+
+    const alert = await screen.findByRole('alert');
+    expect(within(alert).getByText(/свёкла: нет в холодильнике, требуется 300 г/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Приготовлено — списать' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.cookDish).not.toHaveBeenCalled();
+  });
+
   it('быстрое приготовление списывает только после подтверждения с operation_id', async () => {
     render(<App />);
     await screen.findByText('Омлет с сыром');
