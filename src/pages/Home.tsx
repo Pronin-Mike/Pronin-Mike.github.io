@@ -5,7 +5,7 @@ import { Badge, Button, Card, SectionTitle } from '../components/ui';
 import { useCookbook } from '../hooks/useCookbook';
 import { checkDish } from '../lib/availability';
 import { getDishExpiryStatus } from '../lib/dishExpiry';
-import { formatTime } from '../lib/format';
+import { formatAmount, formatTime } from '../lib/format';
 
 export default function Home() {
   const { sections, dishes, fridge, fridgeIndex, expiring, expired, loading, error, reload } = useCookbook();
@@ -100,12 +100,12 @@ export default function Home() {
           </div>
           <ul className="divide-y divide-cream-300">
             {attention.map((item) => (
-              <li key={item.id} className="flex min-w-0 items-center gap-3 px-4 py-3">
-                <span className="min-w-0 flex-1 truncate font-semibold text-ink">{item.name}</span>
+              <li key={item.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3 sm:flex-nowrap">
+                <span className="w-full min-w-0 break-words font-semibold leading-snug text-ink sm:w-auto sm:flex-1">{item.name}</span>
                 <span className="shrink-0 text-sm tabular-nums text-ink-muted">
-                  {item.amount} {item.unit}
+                  {formatAmount(item.amount)} {item.unit}
                 </span>
-                <ShelfLifeBadge expiresAt={item.expiresAt} />
+                <ShelfLifeBadge expiresAt={item.expiresAt} className="max-w-full whitespace-normal" />
               </li>
             ))}
           </ul>

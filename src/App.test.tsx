@@ -373,6 +373,25 @@ describe('Главная', () => {
     expect(await screen.findByText('Требуют внимания')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Сроки 2' })).toBeTruthy();
   });
+
+  it('показывает полное название просроченного продукта без обрезки', async () => {
+    fridge = [{
+      id: 'expired-liver',
+      name: 'Печень куриная охлаждённая',
+      amount: 1000,
+      unit: 'г',
+      updatedAt: null,
+      expiresAt: datePlusDays(-2)
+    }];
+    window.history.replaceState(null, '', '#/');
+    render(<App />);
+
+    const name = await screen.findByText('Печень куриная охлаждённая');
+    expect(name.className).not.toContain('truncate');
+    expect(name.className).toContain('break-words');
+    expect(screen.getByText('1000 г')).toBeTruthy();
+    expect(screen.getByText(/просрочено на 2 дн/)).toBeTruthy();
+  });
 });
 
 describe('Навигация и защита маршрутов', () => {
