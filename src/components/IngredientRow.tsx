@@ -34,16 +34,18 @@ export function IngredientEditorRow({
   onPick
 }: IngredientEditorRowProps) {
   return (
-    <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 rounded-xl border border-cream-300 bg-white p-2.5 md:grid-cols-[1.6fr_0.7fr_0.7fr_auto]">
-      <IngredientNameInput
-        value={ingredient.name}
-        suggestions={suggestions}
-        disabled={disabled}
-        placeholder="мука"
-        ariaLabel={`Название ингредиента №${index + 1}`}
-        onChange={(name) => onChange(index, { name })}
-        onPick={(suggestion) => onPick?.(index, suggestion)}
-      />
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(82px,.65fr)_auto] items-center gap-2 rounded-xl border border-cream-300 bg-white p-2.5 md:grid-cols-[1.6fr_0.7fr_0.7fr_auto]">
+      <div className="col-span-3 min-w-0 md:col-span-1">
+        <IngredientNameInput
+          value={ingredient.name}
+          suggestions={suggestions}
+          disabled={disabled}
+          placeholder="мука"
+          ariaLabel={`Название ингредиента №${index + 1}`}
+          onChange={(name) => onChange(index, { name })}
+          onPick={(suggestion) => onPick?.(index, suggestion)}
+        />
+      </div>
       <Input
         value={Number.isFinite(ingredient.amount) ? String(ingredient.amount) : ''}
         disabled={disabled}

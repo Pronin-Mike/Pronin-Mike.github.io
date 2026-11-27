@@ -439,6 +439,15 @@ describe('Подсказки ингредиентов из холодильни�
       .map((option) => option.querySelector('span')?.textContent?.trim() ?? '');
   }
 
+  it('на узком экране отдаёт названию ингредиента всю верхнюю строку', async () => {
+    await openDishForm();
+
+    const nameColumn = nameInput().parentElement?.parentElement;
+    expect(nameColumn?.className).toContain('col-span-3');
+    expect(nameColumn?.className).toContain('md:col-span-1');
+    expect(nameColumn?.parentElement?.className).toContain('md:grid-cols-[1.6fr_0.7fr_0.7fr_auto]');
+  });
+
   it('«о» показывает огурцы и орехи, но не молоко', async () => {
     await openDishForm();
 
